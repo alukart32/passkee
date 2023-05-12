@@ -68,7 +68,7 @@ func Cmd() *cobra.Command {
 	root.PostRunE = func(cmd *cobra.Command, args []string) error {
 		return sessHandler.Terminate()
 	}
-	root.RunE = signup
+	root.RunE = logon
 
 	root.Flags().StringVarP(&remoteAddr, "addr", "a", "http://localhost:8080", "vault remote address")
 	root.MarkFlagRequired("addr")
@@ -79,7 +79,7 @@ func Cmd() *cobra.Command {
 	return root
 }
 
-func signup(cmd *cobra.Command, args []string) error {
+func logon(cmd *cobra.Command, args []string) error {
 	hash := sha256.New()
 	hash.Write([]byte(password))
 	passwordHash := hash.Sum(nil)
@@ -106,16 +106,16 @@ func signup(cmd *cobra.Command, args []string) error {
 
 	client := authpb.NewAuthClient(conn)
 
-	signUpCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	logonCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	_, err = client.LogOn(signUpCtx, &authpb.LogOnRequest{
+	_, err = client.LogOn(logonCtx, &authpb.LogOnRequest{
 		Username: encUsername,
 		Password: encPassword,
 	})
 
 	// TODO: check errors
 	if err != nil {
-		return fmt.Errorf("failed to start a new session: %v", err)
+		return fmt.Errorf("failed to logon: %v", err)
 	}
 
 	return nil
