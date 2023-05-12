@@ -10,21 +10,21 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-// handler is a handler for created sessions with the client.
-type handler struct {
+// manager is a manager for created sessions with the client.
+type manager struct {
 	// sessionID: base64 enc_key
 	sessions *cache.Cache
 }
 
-// Handler returns a new handler.
-func Handler() *handler {
-	return &handler{
+// Manager returns a new session manager.
+func Manager() *manager {
+	return &manager{
 		sessions: cache.New(cache.DefaultExpiration, 10*time.Minute),
 	}
 }
 
 // InitSession creates a new session with the client.
-func (m *handler) InitSession() (conn.Session, error) {
+func (m *manager) InitSession() (conn.Session, error) {
 	sess, err := conn.NewSession()
 	if err != nil {
 		return conn.Session{}, err
@@ -39,12 +39,12 @@ func (m *handler) InitSession() (conn.Session, error) {
 }
 
 // TerminateSession ends session by id.
-func (m *handler) TerminateSession(id string) {
+func (m *manager) TerminateSession(id string) {
 	m.sessions.Delete(id)
 }
 
 // SessionById returns session context by id.
-func (m *handler) SessionById(id string) (conn.Session, error) {
+func (m *manager) SessionById(id string) (conn.Session, error) {
 	v, ok := m.sessions.Get(id)
 	if !ok {
 		return conn.Session{}, fmt.Errorf("can't find session by %v", id)
