@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+
+option go_package = "pkg/proto/v1/creditcardpb";
+
+package creditcard.v1;
+
+service CreditCardsVault {
+  rpc AddCreditCard(AddCreditCardRequest) returns (google.protobuf.Empty);
+  rpc GetCreditCard(GetCreditCardRequest) returns (CreditCard);
+  rpc UpdateCreditCard(UpdateCreditCardRequest) returns(google.protobuf.Empty);
+  rpc ListCreditCards(google.protobuf.Empty) returns (ListCreditCardsResponse);
+  rpc DeleteCreditCard(DeleteCreditCardRequest) returns (google.protobuf.Empty);
+}
+
+message CreditCard {
+  string title = 1;
+  // The field will contain credit card details in the format number:month/year:cvv:owner,
+  // where the owner can be omitted.
+  string data = 2;
+  optional string notes = 3;
+}
+
+message AddCreditCardRequest {
+  CreditCard card = 1;
+}
+
+message GetCreditCardRequest {
+  string title = 1;
+}
+
+message UpdateCreditCardRequest {
+  string title = 1;
+
+  // The CreditCard resource which replaces the resource on the server.
+  message CreditCard {
+    optional string title = 1;
+    optional string number = 2;
+    optional string expire_time = 3;
+    optional string cvv = 4;
+    optional string owner = 5;
+    optional string notes = 6;
+  }
+  CreditCard card = 2;
+
+  google.protobuf.FieldMask update_mask = 3;
+}
+
+message ListCreditCardsResponse {
+  message CreditCard {
+    string title = 1;
+    string number = 2;
+  }
+  repeated CreditCard cards = 1;
+}
+
+message DeleteCreditCardRequest {
+  string title = 1;
+  string number = 2;
+}
