@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -52,10 +53,13 @@ func (h *grpcHandler) Handshake(in conn.Info) (conn.Session, error) {
 		handshakeCtx,
 		&emptypb.Empty{},
 	)
-
-	// TODO: check errors
 	if err != nil {
-		return conn.Session{}, fmt.Errorf("handshake failed: %v", err)
+		if e, ok := status.FromError(err); ok {
+			err = fmt.Errorf("handshake failed: %v", e.Message())
+		} else {
+			err = fmt.Errorf("can't parse %v", err)
+		}
+		return conn.Session{}, err
 	}
 
 	// Prepare session context.
@@ -91,10 +95,13 @@ func (h *grpcHandler) Terminate() error {
 			Id: h.session.Id,
 		},
 	)
-
-	// TODO: check errors
 	if err != nil {
-		return fmt.Errorf("can't terminate session: %v", err)
+		if e, ok := status.FromError(err); ok {
+			err = fmt.Errorf("can't terminate session: %v", e.Message())
+		} else {
+			err = fmt.Errorf("can't parse %v", err)
+		}
+		return err
 	}
 	return nil
 }
