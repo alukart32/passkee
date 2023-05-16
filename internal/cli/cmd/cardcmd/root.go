@@ -3,6 +3,7 @@ package cardcmd
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/session"
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
@@ -34,29 +35,30 @@ var root = &cobra.Command{
 func Cmd(
 	connInfoProvider func() (conn.Info, error),
 ) *cobra.Command {
-	root.PreRunE = func(cmd *cobra.Command, args []string) error {
+	root.PreRun = func(cmd *cobra.Command, args []string) {
 		// Read user input.
 		connInfo, err := connInfoProvider()
 		if err != nil {
-			return err
+			fmt.Println(err)
+			return
 		}
+
 		// Create a new session handler.
 		sessHandler = session.GrpcHandler()
-
 		// Try to handshake.
 		clientSession, err := sessHandler.Handshake(connInfo)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 		encrypter, err = clientSession.DataEncrypter()
 		if err != nil {
-			return fmt.Errorf("can't prepare data encrypter: %v", err)
+			log.Fatalf("can't prepare data encrypter: %v", err)
 		}
-
-		return nil
 	}
-	root.PostRunE = func(cmd *cobra.Command, args []string) error {
-		return sessHandler.Terminate()
+	root.PostRun = func(cmd *cobra.Command, args []string) {
+		if err := sessHandler.Terminate(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	root.AddCommand(
@@ -66,6 +68,5 @@ func Cmd(
 		indexCmd(),
 		updateCmd(),
 	)
-
 	return root
 }
