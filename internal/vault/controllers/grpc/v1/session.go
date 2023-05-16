@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
 	"google.golang.org/grpc"
@@ -12,8 +13,20 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func RegisterSessionService(srv *grpc.Server) {
-	// TODO:
+func RegisterSessionService(srv *grpc.Server, conn connHandler) error {
+	if srv == nil {
+		return fmt.Errorf("no grpc server to register")
+	}
+	if conn == nil {
+		return fmt.Errorf("no connection handler")
+	}
+
+	authpb.RegisterSessionServer(srv,
+		&sessionService{
+			conn: conn,
+		},
+	)
+	return nil
 }
 
 type sessionService struct {
@@ -25,7 +38,7 @@ type sessionService struct {
 func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*authpb.ServerSession, error) {
 	sess, err := s.conn.InitSession()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "start session: %v", err)
+		return nil, status.Errorf(codes.Internal, "can't start a new session: %v", err)
 	}
 
 	md := metadata.Pairs("session_id", base64.StdEncoding.EncodeToString([]byte(sess.Id)))
@@ -37,19 +50,7 @@ func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*auth
 	}, nil
 }
 
-func (s *sessionService) Terminate(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-	s.conn.TerminateSession(sessionFromCtx(ctx))
+func (s *sessionService) Terminate(ctx context.Context, in *authpb.TerminateRequest) (*emptypb.Empty, error) {
+	s.conn.TerminateSession(in.Id)
 	return &emptypb.Empty{}, nil
-}
-
-// sessionFromCtx gets sessionID from the context of the method request.
-func sessionFromCtx(ctx context.Context) string {
-	var sessionID string
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		values := md.Get("session_id")
-		if len(values) > 0 {
-			sessionID = values[0]
-		}
-	}
-	return sessionID
 }

@@ -39,3 +39,15 @@ func userIDFromCtx(ctx context.Context) string {
 	}
 	return userID
 }
+
+// sessionFromCtx gets sessionID from the context of the method request.
+func sessionFromCtx(ctx context.Context) string {
+	var sessionID string
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		values := md.Get("session_id")
+		if len(values) > 0 {
+			sessionID = values[0]
+		}
+	}
+	return sessionID
+}
