@@ -14,7 +14,7 @@ import (
 )
 
 type userProvider interface {
-	Get(string) models.User
+	Get(ctx context.Context, username string) (models.User, error)
 }
 
 // basicAuth authenticates methods call using the basic authentication type.
@@ -28,7 +28,7 @@ func basicAuth(provider userProvider) authmd.AuthFunc {
 		// Get auth basic header.
 		rawToken, err := authmd.AuthFromMD(ctx, "basic")
 		if err != nil {
-			return nil, status.Errorf(codes.Unauthenticated, "no basic header found: %v", err)
+			return nil, status.Errorf(codes.Unauthenticated, "basic header not found: %v", err)
 		}
 		token, err := base64.StdEncoding.DecodeString(rawToken)
 		if err != nil {
@@ -42,12 +42,15 @@ func basicAuth(provider userProvider) authmd.AuthFunc {
 		}
 
 		// Find user.
-		user := provider.Get(creds[0])
+		user, err := provider.Get(ctx, creds[0])
+		if err != nil {
+			return nil, status.Errorf(codes.Unauthenticated, "can't find user: %v", err)
+		}
 		if user.IsEmpty() {
-			return nil, status.Error(codes.Unauthenticated, "invalid auth credentials")
+			return nil, status.Error(codes.Unauthenticated, "user not found")
 		} else {
 			// Validate user credentials.
-			creds := fmt.Sprintf("%v:%v", user.Login, user.Password)
+			creds := fmt.Sprintf("%v:%v", user.Username, user.Password)
 			creds = base64.StdEncoding.EncodeToString([]byte(creds))
 			if rawToken != creds {
 				return nil, status.Errorf(codes.Unauthenticated, "invalid auth credentials")
