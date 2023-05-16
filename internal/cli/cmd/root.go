@@ -12,9 +12,9 @@ import (
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/bincmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/cardcmd"
-	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/credcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/infocmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/logoncmd"
+	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/passcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/textcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
 	"github.com/spf13/cobra"
@@ -39,14 +39,14 @@ func init() {
 		logoncmd.Cmd(),
 		bincmd.Cmd(scanConnInfo),
 		textcmd.Cmd(scanConnInfo),
-		credcmd.Cmd(scanConnInfo),
+		passcmd.Cmd(scanConnInfo),
 		cardcmd.Cmd(scanConnInfo),
 	)
 }
 
 func scanConnInfo() (conn.Info, error) {
 	var (
-		remoteAddr string
+		remoteAddr = "http://localhost:8080"
 		username   string
 		password   []byte
 	)
@@ -59,7 +59,7 @@ func scanConnInfo() (conn.Info, error) {
 		log.Fatalf("Error: %v\n", err)
 	}
 	addrStr = strings.TrimSpace(addrStr)
-	if len(remoteAddr) != 0 {
+	if len(addrStr) != 0 {
 		_, err = url.Parse(addrStr)
 		if err != nil {
 			log.Fatalln("Corrupted URL")
