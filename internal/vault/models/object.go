@@ -6,9 +6,9 @@ import (
 
 type Object struct {
 	UserID string
-	Name   string
 	Typ    ObjectType
-	Notes  string
+	Name   []byte
+	Notes  []byte
 	Data   []byte
 }
 

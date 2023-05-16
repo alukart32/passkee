@@ -1,13 +1,13 @@
 package models
 
-type Passwords struct {
+type Password struct {
 	UserID string
 	Name   []byte
 	Data   []byte
 	Notes  []byte
 }
 
-func (p *Passwords) IsEmpty() bool {
+func (p *Password) IsEmpty() bool {
 	return len(p.UserID) == 0 &&
 		len(p.Name) == 0 &&
 		len(p.Data) == 0
