@@ -13,7 +13,7 @@ var Cmd = &cobra.Command{
 	Short: "CLI build info",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Build info:\n\tversion: %v\n\tbuild data: %s",
+		fmt.Printf("Build\n  ver : %v\n  data: %s",
 			versionTag, buildTag)
 	},
 }
