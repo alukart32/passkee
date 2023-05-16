@@ -4,7 +4,7 @@
 // - protoc             v4.22.2
 // source: passwords.proto
 
-package passwordspb
+package passwordpb
 
 import (
 	context "context"
@@ -20,11 +20,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	PasswordsVault_AddPassword_FullMethodName    = "/passwords.v1.PasswordsVault/AddPassword"
-	PasswordsVault_GetPassword_FullMethodName    = "/passwords.v1.PasswordsVault/GetPassword"
-	PasswordsVault_UpdatePassword_FullMethodName = "/passwords.v1.PasswordsVault/UpdatePassword"
-	PasswordsVault_IndexPasswords_FullMethodName = "/passwords.v1.PasswordsVault/IndexPasswords"
-	PasswordsVault_DeletePassword_FullMethodName = "/passwords.v1.PasswordsVault/DeletePassword"
+	PasswordsVault_AddPassword_FullMethodName    = "/password.v1.PasswordsVault/AddPassword"
+	PasswordsVault_GetPassword_FullMethodName    = "/password.v1.PasswordsVault/GetPassword"
+	PasswordsVault_ResetPassword_FullMethodName  = "/password.v1.PasswordsVault/ResetPassword"
+	PasswordsVault_IndexPasswords_FullMethodName = "/password.v1.PasswordsVault/IndexPasswords"
+	PasswordsVault_DeletePassword_FullMethodName = "/password.v1.PasswordsVault/DeletePassword"
 )
 
 // PasswordsVaultClient is the client API for PasswordsVault service.
@@ -33,7 +33,7 @@ const (
 type PasswordsVaultClient interface {
 	AddPassword(ctx context.Context, in *AddPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetPassword(ctx context.Context, in *GetPasswordRequest, opts ...grpc.CallOption) (*Password, error)
-	UpdatePassword(ctx context.Context, in *UpdatePasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	IndexPasswords(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*IndexPasswordsResponse, error)
 	DeletePassword(ctx context.Context, in *DeletePasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -64,9 +64,9 @@ func (c *passwordsVaultClient) GetPassword(ctx context.Context, in *GetPasswordR
 	return out, nil
 }
 
-func (c *passwordsVaultClient) UpdatePassword(ctx context.Context, in *UpdatePasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *passwordsVaultClient) ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, PasswordsVault_UpdatePassword_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, PasswordsVault_ResetPassword_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (c *passwordsVaultClient) DeletePassword(ctx context.Context, in *DeletePas
 type PasswordsVaultServer interface {
 	AddPassword(context.Context, *AddPasswordRequest) (*emptypb.Empty, error)
 	GetPassword(context.Context, *GetPasswordRequest) (*Password, error)
-	UpdatePassword(context.Context, *UpdatePasswordRequest) (*emptypb.Empty, error)
+	ResetPassword(context.Context, *ResetPasswordRequest) (*emptypb.Empty, error)
 	IndexPasswords(context.Context, *emptypb.Empty) (*IndexPasswordsResponse, error)
 	DeletePassword(context.Context, *DeletePasswordRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedPasswordsVaultServer()
@@ -113,8 +113,8 @@ func (UnimplementedPasswordsVaultServer) AddPassword(context.Context, *AddPasswo
 func (UnimplementedPasswordsVaultServer) GetPassword(context.Context, *GetPasswordRequest) (*Password, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPassword not implemented")
 }
-func (UnimplementedPasswordsVaultServer) UpdatePassword(context.Context, *UpdatePasswordRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdatePassword not implemented")
+func (UnimplementedPasswordsVaultServer) ResetPassword(context.Context, *ResetPasswordRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResetPassword not implemented")
 }
 func (UnimplementedPasswordsVaultServer) IndexPasswords(context.Context, *emptypb.Empty) (*IndexPasswordsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IndexPasswords not implemented")
@@ -171,20 +171,20 @@ func _PasswordsVault_GetPassword_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _PasswordsVault_UpdatePassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdatePasswordRequest)
+func _PasswordsVault_ResetPassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResetPasswordRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(PasswordsVaultServer).UpdatePassword(ctx, in)
+		return srv.(PasswordsVaultServer).ResetPassword(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: PasswordsVault_UpdatePassword_FullMethodName,
+		FullMethod: PasswordsVault_ResetPassword_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PasswordsVaultServer).UpdatePassword(ctx, req.(*UpdatePasswordRequest))
+		return srv.(PasswordsVaultServer).ResetPassword(ctx, req.(*ResetPasswordRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -229,7 +229,7 @@ func _PasswordsVault_DeletePassword_Handler(srv interface{}, ctx context.Context
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PasswordsVault_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "passwords.v1.PasswordsVault",
+	ServiceName: "password.v1.PasswordsVault",
 	HandlerType: (*PasswordsVaultServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -241,8 +241,8 @@ var PasswordsVault_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _PasswordsVault_GetPassword_Handler,
 		},
 		{
-			MethodName: "UpdatePassword",
-			Handler:    _PasswordsVault_UpdatePassword_Handler,
+			MethodName: "ResetPassword",
+			Handler:    _PasswordsVault_ResetPassword_Handler,
 		},
 		{
 			MethodName: "IndexPasswords",

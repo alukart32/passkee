@@ -20,11 +20,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ObjectVault_UploadObject_FullMethodName     = "/dataobject.v1.ObjectVault/UploadObject"
-	ObjectVault_DownloadObject_FullMethodName   = "/dataobject.v1.ObjectVault/DownloadObject"
-	ObjectVault_UpdateObjectInfo_FullMethodName = "/dataobject.v1.ObjectVault/UpdateObjectInfo"
-	ObjectVault_IndexObjects_FullMethodName     = "/dataobject.v1.ObjectVault/IndexObjects"
-	ObjectVault_DeleteObject_FullMethodName     = "/dataobject.v1.ObjectVault/DeleteObject"
+	ObjectVault_UploadObject_FullMethodName     = "/object.v1.ObjectVault/UploadObject"
+	ObjectVault_DownloadObject_FullMethodName   = "/object.v1.ObjectVault/DownloadObject"
+	ObjectVault_UpdateObjectInfo_FullMethodName = "/object.v1.ObjectVault/UpdateObjectInfo"
+	ObjectVault_IndexObjects_FullMethodName     = "/object.v1.ObjectVault/IndexObjects"
+	ObjectVault_DeleteObject_FullMethodName     = "/object.v1.ObjectVault/DeleteObject"
 )
 
 // ObjectVaultClient is the client API for ObjectVault service.
@@ -310,7 +310,7 @@ func _ObjectVault_DeleteObject_Handler(srv interface{}, ctx context.Context, dec
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ObjectVault_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "dataobject.v1.ObjectVault",
+	ServiceName: "object.v1.ObjectVault",
 	HandlerType: (*ObjectVaultServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

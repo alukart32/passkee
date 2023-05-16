@@ -7,7 +7,7 @@ option go_package = "pkg/proto/v1/authpb";
 package auth.v1;
 
 service Auth {
-  rpc LogOn(LogOnRequest) returns(ServerSession);
+  rpc LogOn(LogOnRequest) returns(google.protobuf.Empty);
 }
 
 message LogOnRequest {

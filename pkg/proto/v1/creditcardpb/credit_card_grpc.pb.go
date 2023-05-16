@@ -23,7 +23,7 @@ const (
 	CreditCardsVault_AddCreditCard_FullMethodName    = "/creditcard.v1.CreditCardsVault/AddCreditCard"
 	CreditCardsVault_GetCreditCard_FullMethodName    = "/creditcard.v1.CreditCardsVault/GetCreditCard"
 	CreditCardsVault_UpdateCreditCard_FullMethodName = "/creditcard.v1.CreditCardsVault/UpdateCreditCard"
-	CreditCardsVault_ListCreditCards_FullMethodName  = "/creditcard.v1.CreditCardsVault/ListCreditCards"
+	CreditCardsVault_IndexCreditCards_FullMethodName = "/creditcard.v1.CreditCardsVault/IndexCreditCards"
 	CreditCardsVault_DeleteCreditCard_FullMethodName = "/creditcard.v1.CreditCardsVault/DeleteCreditCard"
 )
 
@@ -34,7 +34,7 @@ type CreditCardsVaultClient interface {
 	AddCreditCard(ctx context.Context, in *AddCreditCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetCreditCard(ctx context.Context, in *GetCreditCardRequest, opts ...grpc.CallOption) (*CreditCard, error)
 	UpdateCreditCard(ctx context.Context, in *UpdateCreditCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ListCreditCards(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCreditCardsResponse, error)
+	IndexCreditCards(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*IndexCreditCardsResponse, error)
 	DeleteCreditCard(ctx context.Context, in *DeleteCreditCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -73,9 +73,9 @@ func (c *creditCardsVaultClient) UpdateCreditCard(ctx context.Context, in *Updat
 	return out, nil
 }
 
-func (c *creditCardsVaultClient) ListCreditCards(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCreditCardsResponse, error) {
-	out := new(ListCreditCardsResponse)
-	err := c.cc.Invoke(ctx, CreditCardsVault_ListCreditCards_FullMethodName, in, out, opts...)
+func (c *creditCardsVaultClient) IndexCreditCards(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*IndexCreditCardsResponse, error) {
+	out := new(IndexCreditCardsResponse)
+	err := c.cc.Invoke(ctx, CreditCardsVault_IndexCreditCards_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ type CreditCardsVaultServer interface {
 	AddCreditCard(context.Context, *AddCreditCardRequest) (*emptypb.Empty, error)
 	GetCreditCard(context.Context, *GetCreditCardRequest) (*CreditCard, error)
 	UpdateCreditCard(context.Context, *UpdateCreditCardRequest) (*emptypb.Empty, error)
-	ListCreditCards(context.Context, *emptypb.Empty) (*ListCreditCardsResponse, error)
+	IndexCreditCards(context.Context, *emptypb.Empty) (*IndexCreditCardsResponse, error)
 	DeleteCreditCard(context.Context, *DeleteCreditCardRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedCreditCardsVaultServer()
 }
@@ -116,8 +116,8 @@ func (UnimplementedCreditCardsVaultServer) GetCreditCard(context.Context, *GetCr
 func (UnimplementedCreditCardsVaultServer) UpdateCreditCard(context.Context, *UpdateCreditCardRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateCreditCard not implemented")
 }
-func (UnimplementedCreditCardsVaultServer) ListCreditCards(context.Context, *emptypb.Empty) (*ListCreditCardsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListCreditCards not implemented")
+func (UnimplementedCreditCardsVaultServer) IndexCreditCards(context.Context, *emptypb.Empty) (*IndexCreditCardsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IndexCreditCards not implemented")
 }
 func (UnimplementedCreditCardsVaultServer) DeleteCreditCard(context.Context, *DeleteCreditCardRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteCreditCard not implemented")
@@ -189,20 +189,20 @@ func _CreditCardsVault_UpdateCreditCard_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _CreditCardsVault_ListCreditCards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CreditCardsVault_IndexCreditCards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CreditCardsVaultServer).ListCreditCards(ctx, in)
+		return srv.(CreditCardsVaultServer).IndexCreditCards(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: CreditCardsVault_ListCreditCards_FullMethodName,
+		FullMethod: CreditCardsVault_IndexCreditCards_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CreditCardsVaultServer).ListCreditCards(ctx, req.(*emptypb.Empty))
+		return srv.(CreditCardsVaultServer).IndexCreditCards(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -245,8 +245,8 @@ var CreditCardsVault_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CreditCardsVault_UpdateCreditCard_Handler,
 		},
 		{
-			MethodName: "ListCreditCards",
-			Handler:    _CreditCardsVault_ListCreditCards_Handler,
+			MethodName: "IndexCreditCards",
+			Handler:    _CreditCardsVault_IndexCreditCards_Handler,
 		},
 		{
 			MethodName: "DeleteCreditCard",

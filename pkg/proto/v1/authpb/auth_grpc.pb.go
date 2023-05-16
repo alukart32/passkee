@@ -27,7 +27,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuthClient interface {
-	LogOn(ctx context.Context, in *LogOnRequest, opts ...grpc.CallOption) (*ServerSession, error)
+	LogOn(ctx context.Context, in *LogOnRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type authClient struct {
@@ -38,8 +38,8 @@ func NewAuthClient(cc grpc.ClientConnInterface) AuthClient {
 	return &authClient{cc}
 }
 
-func (c *authClient) LogOn(ctx context.Context, in *LogOnRequest, opts ...grpc.CallOption) (*ServerSession, error) {
-	out := new(ServerSession)
+func (c *authClient) LogOn(ctx context.Context, in *LogOnRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, Auth_LogOn_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (c *authClient) LogOn(ctx context.Context, in *LogOnRequest, opts ...grpc.C
 // All implementations must embed UnimplementedAuthServer
 // for forward compatibility
 type AuthServer interface {
-	LogOn(context.Context, *LogOnRequest) (*ServerSession, error)
+	LogOn(context.Context, *LogOnRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedAuthServer()
 }
 
@@ -59,7 +59,7 @@ type AuthServer interface {
 type UnimplementedAuthServer struct {
 }
 
-func (UnimplementedAuthServer) LogOn(context.Context, *LogOnRequest) (*ServerSession, error) {
+func (UnimplementedAuthServer) LogOn(context.Context, *LogOnRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LogOn not implemented")
 }
 func (UnimplementedAuthServer) mustEmbedUnimplementedAuthServer() {}
