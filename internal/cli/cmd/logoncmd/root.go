@@ -12,7 +12,9 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 type dataEncrypter interface {
@@ -36,7 +38,7 @@ var (
 
 var root = &cobra.Command{
 	Use:     "logon",
-	Example: "logon -a server_address -u myname -p pass",
+	Example: "logon -a server_address -u username -p password",
 	Short:   "Log on to the server",
 }
 
@@ -53,7 +55,6 @@ func Cmd() *cobra.Command {
 
 		clientSession, err := sessHandler.Handshake(conn.Info{
 			RemoteAddr: remoteAddr,
-			Creds:      "",
 		})
 		if err != nil {
 			return err
@@ -84,12 +85,12 @@ func logon(cmd *cobra.Command, args []string) error {
 	hash.Write([]byte(password))
 	passwordHash := hash.Sum(nil)
 
-	encUsername, err := encrypter.Encrypt([]byte(username))
+	_username, err := encrypter.Encrypt([]byte(username))
 	if err != nil {
 		return fmt.Errorf("can't encrypt username: %v", err)
 	}
 
-	encPassword, err := encrypter.Encrypt(passwordHash)
+	_password, err := encrypter.Encrypt(passwordHash)
 	if err != nil {
 		return fmt.Errorf("can't encrypt password: %v", err)
 	}
@@ -109,14 +110,23 @@ func logon(cmd *cobra.Command, args []string) error {
 	logonCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	_, err = client.LogOn(logonCtx, &authpb.LogOnRequest{
-		Username: encUsername,
-		Password: encPassword,
+		Username: _username,
+		Password: _password,
 	})
 
-	// TODO: check errors
 	if err != nil {
-		return fmt.Errorf("failed to logon: %v", err)
+		if e, ok := status.FromError(err); ok {
+			switch e.Code() {
+			case codes.DeadlineExceeded:
+				fmt.Println(e.Message())
+			case codes.Internal:
+				fmt.Printf("can't log on: %v", err)
+			default:
+				fmt.Println(e.Code(), e.Message())
+			}
+		} else {
+			fmt.Printf("can't parse %v", err)
+		}
 	}
-
 	return nil
 }
