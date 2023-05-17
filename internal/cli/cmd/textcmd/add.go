@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/objectpb"
+	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/blobpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -18,10 +18,10 @@ import (
 
 func addCmd() *cobra.Command {
 	cmd := cobra.Command{
-		Use:   "add [--n name]([-notes])([-f filepath]) value",
-		Short: "Put the new text in vault",
+		Use:   "add",
+		Short: "put the new text in vault",
 		Example: `add -n demo_text -f filepath
-		add -n demo_text "some text"`,
+add -n demo_text "some text"`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := cobra.MaximumNArgs(1)(cmd, args); err != nil {
 				return err
@@ -43,6 +43,9 @@ var name, notes, filepath string
 const (
 	maxSize    = 1 << 20 // bytes
 	bufferSize = 4096    // bytes
+
+	rateLimitPeriod = time.Minute
+	rateLimit       = 200 // most 200 requests in one minute
 )
 
 func addE(cmd *cobra.Command, args []string) error {
@@ -91,43 +94,57 @@ func addE(cmd *cobra.Command, args []string) error {
 	streamCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	client := objectpb.NewObjectVaultClient(conn)
+	client := blobpb.NewBlobVaultClient(conn)
 	stream, err := client.UploadObject(sessHandler.AuthContext(streamCtx))
 	if err != nil {
-		return fmt.Errorf("unable to stream: %v", err)
+		return fmt.Errorf("can't upload text: %v", err)
 	}
 
 	// Send the object info.
-	err = stream.Send(&objectpb.UploadObjectRequest{
-		Data: &objectpb.UploadObjectRequest_Info{
-			Info: &objectpb.UploadObjectRequest_ObjectInfo{
+	err = stream.Send(&blobpb.UploadObjectRequest{
+		Data: &blobpb.UploadObjectRequest_Info{
+			Info: &blobpb.UploadObjectRequest_ObjectInfo{
 				Name:  encName,
-				Typ:   objectpb.ObjectType_OBJECT_TEXT,
+				Typ:   blobpb.ObjectType_OBJECT_TEXT,
 				Notes: encNotes,
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("unable to stream: %v, details: %v", err, stream.RecvMsg(nil))
+		return fmt.Errorf("can't send text info: %v, details: %v", err, stream.RecvMsg(nil))
 	}
+
+	quotas := make(chan time.Time, rateLimit)
+	go func() {
+		tick := time.NewTicker(rateLimitPeriod / rateLimit)
+		defer tick.Stop()
+		for t := range tick.C {
+			select {
+			case quotas <- t:
+			case <-stream.Context().Done():
+				return
+			default:
+			}
+		}
+	}()
 
 	// Send data chunks.
 	for _, b := range blocks {
-		// TODO: add rate limiting
-		err := stream.Send(&objectpb.UploadObjectRequest{
-			Data: &objectpb.UploadObjectRequest_Chunk{
-				Chunk: &objectpb.Chunk{
+		<-quotas
+		err := stream.Send(&blobpb.UploadObjectRequest{
+			Data: &blobpb.UploadObjectRequest_Chunk{
+				Chunk: &blobpb.Chunk{
 					Data: b,
 				},
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("unable to stream: %v, details: %v", err, stream.RecvMsg(nil))
+			return fmt.Errorf("can't stream: %v, details: %v", err, stream.RecvMsg(nil))
 		}
 	}
 	err = stream.CloseSend()
 	if err != nil {
-		return fmt.Errorf("can't close stream: %v", err)
+		return fmt.Errorf("can't close the stream: %v", err)
 	}
 
 	log.Printf("object was uploaded")
@@ -181,7 +198,7 @@ func readFile(filepath string) ([][]byte, error) {
 	}
 	size := fi.Size()
 	if size > maxSize {
-		return nil, fmt.Errorf("unexpected file size %v, want %v", size, maxSize)
+		return nil, fmt.Errorf("file size %v > %v", size, maxSize)
 	}
 
 	// Read and encrypt file data in blocks.
