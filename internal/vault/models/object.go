@@ -1,42 +1,31 @@
 package models
 
-import (
-	"fmt"
-)
-
-type Object struct {
+type ObjectMeta struct {
 	UserID string
-	Typ    ObjectType
 	Name   []byte
-	Notes  []byte
-	Data   []byte
 }
 
-type ObjectType struct {
-	T string
+func (m *ObjectMeta) IsEmpty() bool {
+	return len(m.UserID) == 0 &&
+		len(m.Name) == 0
 }
 
-func ObjectTypeFromString(t string) (ObjectType, error) {
-	if len(t) == 0 {
-		return UndefinedObjectType, fmt.Errorf("empty type")
-	}
-
-	switch t {
-	case "text":
-		return TextObjectType, nil
-	case "bin":
-		return BinObjectType, nil
-	default:
-		return UndefinedObjectType, fmt.Errorf("undefined type %v", t)
-	}
+type Password struct {
+	Meta  ObjectMeta
+	Data  []byte
+	Notes []byte
 }
 
-func (t *ObjectType) String() string {
-	return t.T
+func (p *Password) IsEmpty() bool {
+	return p.Meta.IsEmpty() && len(p.Data) == 0
 }
 
-var (
-	UndefinedObjectType = ObjectType{T: "undefined"}
-	TextObjectType      = ObjectType{T: "text"}
-	BinObjectType       = ObjectType{T: "bin"}
-)
+type CreditCard struct {
+	Meta  ObjectMeta
+	Data  []byte
+	Notes []byte
+}
+
+func (c *CreditCard) IsEmpty() bool {
+	return c.Meta.IsEmpty() && len(c.Data) == 0
+}

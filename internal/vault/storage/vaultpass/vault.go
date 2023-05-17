@@ -32,7 +32,7 @@ func Vault(encrypter contentEncrypter, pool *pgxpool.Pool) *vault {
 }
 
 func (v *vault) Save(ctx context.Context, pass models.Password) error {
-	name, err := v.enc.Encrypt(pass.Name)
+	name, err := v.enc.Encrypt(pass.Meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't prepare name for storing: %v", err)
 	}
@@ -50,7 +50,7 @@ func (v *vault) Save(ctx context.Context, pass models.Password) error {
 	}
 
 	err = v.save(ctx, passwordModel{
-		UserID: pass.UserID,
+		UserID: pass.Meta.UserID,
 		Name:   name,
 		Data:   data,
 		Notes:  notes,
@@ -92,20 +92,16 @@ func (v *vault) save(ctx context.Context, model passwordModel) error {
 	return err
 }
 
-func (v *vault) GetByName(ctx context.Context, userID, recordName string) (models.Password, error) {
-	targetName, err := v.enc.Encrypt([]byte(recordName))
+func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.Password, error) {
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return models.Password{}, fmt.Errorf("can't process record name: %v", err)
 	}
-	model, err := v.getByName(ctx, userID, string(targetName))
+	model, err := v.get(ctx, meta.UserID, string(recordName))
 	if err != nil {
 		return models.Password{}, err
 	}
 
-	name, err := v.enc.Decrypt(model.Name)
-	if err != nil {
-		return models.Password{}, err
-	}
 	data, err := v.enc.Decrypt(model.Data)
 	if err != nil {
 		return models.Password{}, err
@@ -119,14 +115,13 @@ func (v *vault) GetByName(ctx context.Context, userID, recordName string) (model
 	}
 
 	return models.Password{
-		UserID: model.UserID,
-		Name:   name,
-		Data:   data,
-		Notes:  notes,
+		Meta:  meta,
+		Data:  data,
+		Notes: notes,
 	}, nil
 }
 
-func (v *vault) getByName(ctx context.Context, userID, name string) (passwordModel, error) {
+func (v *vault) get(ctx context.Context, userID, name string) (passwordModel, error) {
 	const query = `SELECT * FROM passwords WHERE user_id = $1 AND name = $2`
 	row := v.pool.QueryRow(ctx, query,
 		userID,
@@ -155,7 +150,9 @@ func (v *vault) Index(ctx context.Context, userID string) ([]models.Password, er
 		}
 
 		passwords[i] = models.Password{
-			Name: name,
+			Meta: models.ObjectMeta{
+				Name: name,
+			},
 		}
 	}
 	return passwords, nil
@@ -195,42 +192,45 @@ func (v *vault) index(ctx context.Context, userID string) ([]passwordModel, erro
 	return records, err
 }
 
-func (v *vault) Reset(ctx context.Context, userID string, name string, pass models.Password) error {
-	if len(pass.Name) == 0 && len(pass.Data) == 0 && len(pass.Notes) == 0 {
+func (v *vault) Reset(ctx context.Context, meta models.ObjectMeta, data models.Password) error {
+	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
 	}
 
-	recordName, err := v.enc.Encrypt([]byte(name))
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't prepare record name: %v", err)
 	}
 	var newName []byte
-	if len(pass.Name) != 0 {
-		newName, err = v.enc.Encrypt(pass.Name)
+	if len(data.Meta.Name) != 0 {
+		newName, err = v.enc.Encrypt(data.Meta.Name)
 		if err != nil {
 			return fmt.Errorf("can't prepare new name for storing: %v", err)
 		}
 	}
 	var newData []byte
-	if len(pass.Data) != 0 {
-		newData, err = v.enc.Encrypt(pass.Data)
+	if len(data.Data) != 0 {
+		newData, err = v.enc.Encrypt(data.Data)
 		if err != nil {
 			return fmt.Errorf("can't prepare new data for storing: %v", err)
 		}
 	}
 	var newNotes []byte
-	if len(pass.Notes) != 0 {
-		newNotes, err = v.enc.Encrypt(pass.Notes)
+	if len(data.Notes) != 0 {
+		newNotes, err = v.enc.Encrypt(data.Notes)
 		if err != nil {
 			return fmt.Errorf("can't prepare new notes for storing: %v", err)
 		}
 	}
 
-	return v.reset(ctx, userID, string(recordName), passwordModel{
-		Name:  newName,
-		Data:  newData,
-		Notes: newNotes,
-	})
+	return v.reset(ctx,
+		meta.UserID,
+		string(recordName),
+		passwordModel{
+			Name:  newName,
+			Data:  newData,
+			Notes: newNotes,
+		})
 }
 
 func (v *vault) reset(ctx context.Context, userID string, name string, model passwordModel) error {
@@ -268,15 +268,15 @@ func (v *vault) reset(ctx context.Context, userID string, name string, model pas
 	return err
 }
 
-func (v *vault) Delete(ctx context.Context, userID string, name string) error {
-	recordName, err := v.enc.Encrypt([]byte(name))
+func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't process a record name: %v", err)
 	}
 
 	const query = `DELETE passwords WHERE user_id = $1 AND name = $2`
 	_, err = v.pool.Exec(ctx, query,
-		userID,
+		meta.UserID,
 		recordName,
 	)
 	return err

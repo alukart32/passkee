@@ -32,7 +32,7 @@ func Vault(encrypter contentEncrypter, pool *pgxpool.Pool) *vault {
 }
 
 func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
-	name, err := v.enc.Encrypt(card.Name)
+	name, err := v.enc.Encrypt(card.Meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't prepare name for storing: %v", err)
 	}
@@ -50,7 +50,7 @@ func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
 	}
 
 	err = v.save(ctx, creditCardModel{
-		UserID: card.UserID,
+		UserID: card.Meta.UserID,
 		Name:   name,
 		Data:   data,
 		Notes:  notes,
@@ -92,20 +92,16 @@ func (v *vault) save(ctx context.Context, model creditCardModel) error {
 	return err
 }
 
-func (v *vault) GetByName(ctx context.Context, userID, recordName string) (models.CreditCard, error) {
-	targetName, err := v.enc.Encrypt([]byte(recordName))
+func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.CreditCard, error) {
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return models.CreditCard{}, fmt.Errorf("can't process record name: %v", err)
 	}
-	model, err := v.getByName(ctx, userID, string(targetName))
+	model, err := v.get(ctx, meta.UserID, string(recordName))
 	if err != nil {
 		return models.CreditCard{}, err
 	}
 
-	name, err := v.enc.Decrypt(model.Name)
-	if err != nil {
-		return models.CreditCard{}, err
-	}
 	data, err := v.enc.Decrypt(model.Data)
 	if err != nil {
 		return models.CreditCard{}, err
@@ -119,14 +115,13 @@ func (v *vault) GetByName(ctx context.Context, userID, recordName string) (model
 	}
 
 	return models.CreditCard{
-		UserID: model.UserID,
-		Name:   name,
-		Data:   data,
-		Notes:  notes,
+		Meta:  meta,
+		Data:  data,
+		Notes: notes,
 	}, nil
 }
 
-func (v *vault) getByName(ctx context.Context, userID, name string) (creditCardModel, error) {
+func (v *vault) get(ctx context.Context, userID, name string) (creditCardModel, error) {
 	const query = `SELECT * FROM credit_cards WHERE user_id = $1 AND name = $2`
 	row := v.pool.QueryRow(ctx, query,
 		userID,
@@ -155,7 +150,9 @@ func (v *vault) Index(ctx context.Context, userID string) ([]models.CreditCard, 
 		}
 
 		cards[i] = models.CreditCard{
-			Name: name,
+			Meta: models.ObjectMeta{
+				Name: name,
+			},
 		}
 	}
 	return cards, nil
@@ -195,42 +192,45 @@ func (v *vault) index(ctx context.Context, userID string) ([]creditCardModel, er
 	return records, err
 }
 
-func (v *vault) Update(ctx context.Context, userID string, name string, card models.CreditCard) error {
-	if len(card.Name) == 0 && len(card.Data) == 0 && len(card.Notes) == 0 {
+func (v *vault) Update(ctx context.Context, meta models.ObjectMeta, data models.CreditCard) error {
+	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
 	}
 
-	recordName, err := v.enc.Encrypt([]byte(name))
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't prepare record name: %v", err)
 	}
 	var newName []byte
-	if len(card.Name) != 0 {
-		newName, err = v.enc.Encrypt(card.Name)
+	if len(data.Meta.Name) != 0 {
+		newName, err = v.enc.Encrypt(data.Meta.Name)
 		if err != nil {
 			return fmt.Errorf("can't prepare new name for storing: %v", err)
 		}
 	}
 	var newData []byte
-	if len(card.Data) != 0 {
-		newData, err = v.enc.Encrypt(card.Data)
+	if len(data.Data) != 0 {
+		newData, err = v.enc.Encrypt(data.Data)
 		if err != nil {
 			return fmt.Errorf("can't prepare new data for storing: %v", err)
 		}
 	}
 	var newNotes []byte
-	if len(card.Notes) != 0 {
-		newNotes, err = v.enc.Encrypt(card.Notes)
+	if len(data.Notes) != 0 {
+		newNotes, err = v.enc.Encrypt(data.Notes)
 		if err != nil {
 			return fmt.Errorf("can't prepare new notes for storing: %v", err)
 		}
 	}
 
-	return v.update(ctx, userID, string(recordName), creditCardModel{
-		Name:  newName,
-		Data:  newData,
-		Notes: newNotes,
-	})
+	return v.update(ctx,
+		meta.UserID,
+		string(recordName),
+		creditCardModel{
+			Name:  newName,
+			Data:  newData,
+			Notes: newNotes,
+		})
 }
 
 func (v *vault) update(ctx context.Context, userID string, name string, model creditCardModel) error {
@@ -268,15 +268,15 @@ func (v *vault) update(ctx context.Context, userID string, name string, model cr
 	return err
 }
 
-func (v *vault) Delete(ctx context.Context, userID string, name string) error {
-	recordName, err := v.enc.Encrypt([]byte(name))
+func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
+	recordName, err := v.enc.Encrypt(meta.Name)
 	if err != nil {
 		return fmt.Errorf("can't process a record name: %v", err)
 	}
 
 	const query = `DELETE credit_cards WHERE user_id = $1 AND name = $2`
 	_, err = v.pool.Exec(ctx, query,
-		userID,
+		meta.UserID,
 		recordName,
 	)
 	return err

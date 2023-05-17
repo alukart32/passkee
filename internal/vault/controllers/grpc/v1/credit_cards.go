@@ -42,13 +42,14 @@ type creditCardVaultService struct {
 
 type creditCardsVault interface {
 	Save(context.Context, models.CreditCard) error
-	GetByName(ctx context.Context, userID string, name string) (models.CreditCard, error)
+	Get(context.Context, models.ObjectMeta) (models.CreditCard, error)
 	Index(ctx context.Context, userID string) ([]models.CreditCard, error)
-	Update(ctx context.Context, userID string, name string, c models.CreditCard) error
-	Delete(ctx context.Context, userID string, name string) error
+	Update(context.Context, models.ObjectMeta, models.CreditCard) error
+	Delete(context.Context, models.ObjectMeta) error
 }
 
-func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditcardpb.AddCreditCardRequest) (*emptypb.Empty, error) {
+func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditcardpb.AddCreditCardRequest) (
+	*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "session not found")
@@ -79,11 +80,14 @@ func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditca
 		}
 	}
 
+	userID := userIDFromCtx(ctx)
 	err = s.vault.Save(ctx, models.CreditCard{
-		UserID: userIDFromCtx(ctx),
-		Name:   name,
-		Data:   data,
-		Notes:  notes,
+		Meta: models.ObjectMeta{
+			UserID: userID,
+			Name:   name,
+		},
+		Data:  data,
+		Notes: notes,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't save a new credit card: %v", err)
@@ -92,7 +96,8 @@ func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditca
 	return &emptypb.Empty{}, nil
 }
 
-func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditcardpb.GetCreditCardRequest) (*creditcardpb.CreditCard, error) {
+func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditcardpb.GetCreditCardRequest) (
+	*creditcardpb.CreditCard, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "session not found")
@@ -108,7 +113,10 @@ func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditca
 	}
 
 	userID := userIDFromCtx(ctx)
-	creditCard, err := s.vault.GetByName(ctx, userID, string(recordName))
+	creditCard, err := s.vault.Get(ctx, models.ObjectMeta{
+		UserID: userID,
+		Name:   recordName,
+	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't find a credit card record: %v", err)
 	}
@@ -122,11 +130,11 @@ func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditca
 	}
 	var notes string
 	if len(creditCard.Notes) != 0 {
-		notesBz, err := encrypter.Encrypt([]byte(creditCard.Notes))
+		b, err := encrypter.Encrypt(creditCard.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare record notes for response: %v", err)
 		}
-		notes = string(notesBz)
+		notes = string(b)
 	}
 
 	return &creditcardpb.CreditCard{
@@ -136,10 +144,14 @@ func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditca
 	}, nil
 }
 
-func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, in *emptypb.Empty) (*creditcardpb.IndexCreditCardsResponse, error) {
+func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, _ *emptypb.Empty) (
+	*creditcardpb.IndexCreditCardsResponse, error) {
 	records, err := s.vault.Index(ctx, userIDFromCtx(ctx))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't index credit cards: %v", err)
+	}
+	if len(records) == 0 {
+		return &creditcardpb.IndexCreditCardsResponse{}, nil
 	}
 
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
@@ -153,7 +165,7 @@ func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, in *empty
 
 	cards := make([]*creditcardpb.IndexCreditCardsResponse_CreditCard, len(records))
 	for i, v := range records {
-		name, err := encrypter.Encrypt([]byte(v.Name))
+		name, err := encrypter.Encrypt(v.Meta.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare data for sending: %v", err)
 		}
@@ -164,7 +176,8 @@ func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, in *empty
 	return &creditcardpb.IndexCreditCardsResponse{Cards: cards}, nil
 }
 
-func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *creditcardpb.UpdateCreditCardRequest) (*emptypb.Empty, error) {
+func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *creditcardpb.UpdateCreditCardRequest) (
+	*emptypb.Empty, error) {
 	if in.Card.Name == nil && in.Card.Data == nil && in.Card.Notes == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "nothing to update")
 	}
@@ -212,11 +225,16 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 		newNotes = b
 	}
 
+	userID := userIDFromCtx(ctx)
 	err = s.vault.Update(ctx,
-		userIDFromCtx(ctx),
-		string(recordName),
+		models.ObjectMeta{
+			UserID: userID,
+			Name:   recordName,
+		},
 		models.CreditCard{
-			Name:  newName,
+			Meta: models.ObjectMeta{
+				Name: newName,
+			},
 			Data:  newData,
 			Notes: newNotes,
 		})
@@ -227,7 +245,8 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 	return &emptypb.Empty{}, nil
 }
 
-func (s *creditCardVaultService) DeleteCreditCard(ctx context.Context, in *creditcardpb.DeleteCreditCardRequest) (*emptypb.Empty, error) {
+func (s *creditCardVaultService) DeleteCreditCard(ctx context.Context, in *creditcardpb.DeleteCreditCardRequest) (
+	*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
 		return nil, status.Error(codes.Internal, "session not found")
@@ -242,7 +261,11 @@ func (s *creditCardVaultService) DeleteCreditCard(ctx context.Context, in *credi
 		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
 	}
 
-	if err := s.vault.Delete(ctx, userIDFromCtx(ctx), string(recordName)); err != nil {
+	userID := userIDFromCtx(ctx)
+	if err := s.vault.Delete(ctx, models.ObjectMeta{
+		UserID: userID,
+		Name:   recordName,
+	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "can't delete credit card record: %v", err)
 	}
 	return &emptypb.Empty{}, nil

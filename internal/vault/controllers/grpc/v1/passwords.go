@@ -41,10 +41,10 @@ type passwordVaultService struct {
 }
 type passwordsVault interface {
 	Save(context.Context, models.Password) error
-	GetByName(ctx context.Context, userID string, name string) (models.Password, error)
+	Get(context.Context, models.ObjectMeta) (models.Password, error)
 	Index(ctx context.Context, userID string) ([]models.Password, error)
-	Reset(ctx context.Context, userID string, name string, p models.Password) error
-	Delete(ctx context.Context, userID string, name string) error
+	Reset(ctx context.Context, meta models.ObjectMeta, data models.Password) error
+	Delete(ctx context.Context, meta models.ObjectMeta) error
 }
 
 func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.AddPasswordRequest) (*emptypb.Empty, error) {
@@ -79,10 +79,12 @@ func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.A
 	}
 
 	err = s.vault.Save(ctx, models.Password{
-		UserID: userIDFromCtx(ctx),
-		Name:   name,
-		Data:   data,
-		Notes:  notes,
+		Meta: models.ObjectMeta{
+			UserID: userIDFromCtx(ctx),
+			Name:   name,
+		},
+		Data:  data,
+		Notes: notes,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't save a new password: %v", err)
@@ -107,25 +109,28 @@ func (s *passwordVaultService) GetPassword(ctx context.Context, in *passwordpb.G
 	}
 
 	userID := userIDFromCtx(ctx)
-	password, err := s.vault.GetByName(ctx, userID, string(recordName))
+	pass, err := s.vault.Get(ctx, models.ObjectMeta{
+		UserID: userID,
+		Name:   recordName,
+	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't find a password record: %v", err)
 	}
-	if password.IsEmpty() {
+	if pass.IsEmpty() {
 		return nil, status.Error(codes.Unknown, "password record not found")
 	}
 
-	data, err := encrypter.Encrypt([]byte(password.Data))
+	data, err := encrypter.Encrypt(pass.Data)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't prepare record data for response: %v", err)
 	}
 	var notes string
-	if len(password.Notes) != 0 {
-		notesBz, err := encrypter.Encrypt([]byte(password.Notes))
+	if len(pass.Notes) != 0 {
+		b, err := encrypter.Encrypt(pass.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare record notes for response: %v", err)
 		}
-		notes = string(notesBz)
+		notes = string(b)
 	}
 
 	return &passwordpb.Password{
@@ -135,11 +140,14 @@ func (s *passwordVaultService) GetPassword(ctx context.Context, in *passwordpb.G
 	}, nil
 }
 
-func (s *passwordVaultService) IndexPasswords(ctx context.Context, in *emptypb.Empty) (
+func (s *passwordVaultService) IndexPasswords(ctx context.Context, _ *emptypb.Empty) (
 	*passwordpb.IndexPasswordsResponse, error) {
 	records, err := s.vault.Index(ctx, userIDFromCtx(ctx))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't index passwords: %v", err)
+	}
+	if len(records) == 0 {
+		return &passwordpb.IndexPasswordsResponse{}, nil
 	}
 
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
@@ -153,7 +161,7 @@ func (s *passwordVaultService) IndexPasswords(ctx context.Context, in *emptypb.E
 
 	names := make([]string, len(records))
 	for i, v := range records {
-		name, err := encrypter.Encrypt([]byte(v.Name))
+		name, err := encrypter.Encrypt(v.Meta.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare data for sending: %v", err)
 		}
@@ -210,11 +218,16 @@ func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb
 		newNotes = b
 	}
 
+	userID := userIDFromCtx(ctx)
 	err = s.vault.Reset(ctx,
-		userIDFromCtx(ctx),
-		string(recordName),
+		models.ObjectMeta{
+			UserID: userID,
+			Name:   recordName,
+		},
 		models.Password{
-			Name:  newName,
+			Meta: models.ObjectMeta{
+				Name: newName,
+			},
 			Data:  newData,
 			Notes: newNotes,
 		})
@@ -240,7 +253,8 @@ func (s *passwordVaultService) DeletePassword(ctx context.Context, in *passwordp
 		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
 	}
 
-	if err := s.vault.Delete(ctx, userIDFromCtx(ctx), string(recordName)); err != nil {
+	userID := userIDFromCtx(ctx)
+	if err := s.vault.Delete(ctx, models.ObjectMeta{userID, recordName}); err != nil {
 		return nil, status.Errorf(codes.Internal, "can't delete password record: %v", err)
 	}
 	return &emptypb.Empty{}, nil
