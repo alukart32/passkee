@@ -10,7 +10,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/creditcardpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -43,17 +42,11 @@ func indexE(cmd *cobra.Command, args []string) error {
 	resp, err := client.IndexCreditCards(sessHandler.AuthContext(indexCtx), &emptypb.Empty{})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				fmt.Println(e.Message())
-			case codes.Internal:
-				fmt.Printf("can't index password records: %v", err)
-			default:
-				fmt.Println(e.Code(), e.Message())
-			}
+			err = fmt.Errorf("can't index credit cards: %v", e.Message())
 		} else {
-			fmt.Printf("can't parse %v", err)
+			err = fmt.Errorf("can't parse %v", err)
 		}
+		return err
 	}
 
 	var sb strings.Builder

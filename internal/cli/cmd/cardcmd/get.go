@@ -9,7 +9,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/creditcardpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -53,17 +52,11 @@ func getE(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				fmt.Println(e.Message())
-			case codes.Internal | codes.Unknown:
-				fmt.Printf("can't get credit card record: %v", err)
-			default:
-				fmt.Println(e.Code(), e.Message())
-			}
+			err = fmt.Errorf("can't get credit card: %v", e.Message())
 		} else {
-			fmt.Printf("can't parse %v", err)
+			err = fmt.Errorf("can't parse %v", err)
 		}
+		return err
 	}
 
 	recordData, err := encrypter.Decrypt([]byte(resp.Data))

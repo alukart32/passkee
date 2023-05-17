@@ -9,7 +9,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/passwordpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -29,12 +28,10 @@ update -n record_name --notes "new record notes"`,
 	cmd.MarkFlagRequired("name")
 	cmd.Flags().StringVarP(&notes, "notes", "", "", "Notes of the record")
 	cmd.Flags().StringVarP(&newRecordName, "record_name", "r", "", "Record name to update")
-	cmd.Flags().StringVarP(&username, "username", "u", "", "Record username to update")
-	cmd.Flags().StringVarP(&password, "password", "p", "", "Record password to update")
 	return &cmd
 }
 
-var username, password, newRecordName string
+var newRecordName string
 
 func updateE(cmd *cobra.Command, args []string) error {
 	recordName, err := encrypter.Encrypt([]byte(name))
@@ -58,11 +55,11 @@ func updateE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid format, must be username:password")
 		}
 
-		dataBz, err := encrypter.Encrypt([]byte(data))
+		b, err := encrypter.Encrypt([]byte(data))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newData = string(dataBz)
+		newData = string(b)
 	}
 
 	var newNotes string
@@ -98,17 +95,11 @@ func updateE(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				fmt.Println(e.Message())
-			case codes.Internal | codes.InvalidArgument:
-				fmt.Printf("can't update password record: %v", err)
-			default:
-				fmt.Println(e.Code(), e.Message())
-			}
+			err = fmt.Errorf("can't update password: %v", e.Message())
 		} else {
-			fmt.Printf("can't parse %v", err)
+			err = fmt.Errorf("can't parse %v", err)
 		}
+		return err
 	}
 	fmt.Println("record updated")
 	return nil

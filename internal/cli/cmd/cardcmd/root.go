@@ -35,7 +35,7 @@ var root = &cobra.Command{
 func Cmd(
 	connInfoProvider func() (conn.Info, error),
 ) *cobra.Command {
-	root.PreRun = func(cmd *cobra.Command, args []string) {
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		// Read user input.
 		connInfo, err := connInfoProvider()
 		if err != nil {
@@ -55,7 +55,7 @@ func Cmd(
 			log.Fatalf("can't prepare data encrypter: %v", err)
 		}
 	}
-	root.PostRun = func(cmd *cobra.Command, args []string) {
+	root.PersistentPostRun = func(cmd *cobra.Command, args []string) {
 		if err := sessHandler.Terminate(); err != nil {
 			log.Fatal(err)
 		}

@@ -9,7 +9,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/creditcardpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -55,11 +54,11 @@ func updateE(cmd *cobra.Command, args []string) error {
 		if !cardReg.MatchString(data) {
 			return fmt.Errorf("invalid format, must be credit_card_number:mm/YYYY:cvv:SURENAME_NAME")
 		}
-		dataBz, err := encrypter.Encrypt([]byte(data))
+		b, err := encrypter.Encrypt([]byte(data))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newData = string(dataBz)
+		newData = string(b)
 	}
 
 	var newNotes string
@@ -94,17 +93,13 @@ func updateE(cmd *cobra.Command, args []string) error {
 		},
 	})
 	if err != nil {
-		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				fmt.Println(e.Message())
-			case codes.Internal | codes.InvalidArgument:
-				fmt.Printf("can't update credt card record: %v", err)
-			default:
-				fmt.Println(e.Code(), e.Message())
+		if err != nil {
+			if e, ok := status.FromError(err); ok {
+				err = fmt.Errorf("can't update credit card: %v", e.Message())
+			} else {
+				err = fmt.Errorf("can't parse %v", err)
 			}
-		} else {
-			fmt.Printf("can't parse %v", err)
+			return err
 		}
 	}
 	fmt.Println("record updated")

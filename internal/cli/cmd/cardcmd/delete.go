@@ -9,7 +9,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/creditcardpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -53,17 +52,11 @@ func delete(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				fmt.Println(e.Message())
-			case codes.Internal:
-				fmt.Printf("can't delete credit card record: %v", err)
-			default:
-				fmt.Println(e.Code(), e.Message())
-			}
+			err = fmt.Errorf("can't delete credit card: %v", e.Message())
 		} else {
-			fmt.Printf("can't parse %v", err)
+			err = fmt.Errorf("can't parse %v", err)
 		}
+		return err
 	}
 	fmt.Println("record deleted")
 	return nil
