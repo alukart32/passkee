@@ -2,11 +2,11 @@ syntax = "proto3";
 
 import "google/protobuf/empty.proto";
 
-option go_package = "pkg/proto/v1/objectpb";
+option go_package = "pkg/proto/v1/blobpb";
 
-package object.v1;
+package blob.v1;
 
-service ObjectVault {
+service BlobVault {
   // Uploads a new data object.
   //
   // The first message contains the metadata of the object, such as name, type, and optional notes.
@@ -23,7 +23,7 @@ service ObjectVault {
   rpc UpdateObjectInfo(UpdateObjectInfoRequest) returns (google.protobuf.Empty);
 
   // Index lists all objects.
-  rpc IndexObjects(google.protobuf.Empty) returns (IndexObjectsResponse);
+  rpc IndexObjects(IndexObjectsRequest) returns (IndexObjectsResponse);
 
   // Deletes an object.
   rpc DeleteObject(DeleteObjectRequest) returns (google.protobuf.Empty);
@@ -59,9 +59,7 @@ message DownloadObjectRequest {
 
 message DownloadObjectResponse {
   message ObjectInfo {
-    string name = 1;
-    string id = 2;
-    optional string notes = 3;
+    optional string notes = 1;
   }
 
   oneof data {
@@ -76,16 +74,19 @@ message UpdateObjectInfoRequest {
 
   message ObjectInfo {
     optional string name = 1;
-    optional string id = 2;
-    optional string notes = 3;
+    optional string notes = 2;
   }
   ObjectInfo info = 3;
+}
+
+
+message IndexObjectsRequest {
+    ObjectType typ = 1;
 }
 
 message IndexObjectsResponse {
   message ObjectInfo {
     string name = 1;
-    ObjectType typ = 2;
   }
   repeated ObjectInfo objects = 1;
 }
