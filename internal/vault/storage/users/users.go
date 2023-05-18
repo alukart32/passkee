@@ -12,11 +12,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type usersStorage struct {
+type Storage struct {
 	pool *pgxpool.Pool
 }
 
-func (s *usersStorage) Save(ctx context.Context, user models.User) error {
+func NewStorage(pool *pgxpool.Pool) (*Storage, error) {
+	if pool == nil {
+		return nil, fmt.Errorf("nil postgres pool")
+	}
+
+	return &Storage{
+		pool: pool,
+	}, nil
+}
+
+func (s *Storage) Save(ctx context.Context, user models.User) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -47,7 +57,7 @@ func (s *usersStorage) Save(ctx context.Context, user models.User) error {
 	return err
 }
 
-func (s *usersStorage) Get(ctx context.Context, username string) (models.User, error) {
+func (s *Storage) Get(ctx context.Context, username string) (models.User, error) {
 	const query = `SELECT * FROM users WHERE username = %1`
 	var user models.User
 	row := s.pool.QueryRow(ctx, query, username)
@@ -65,7 +75,7 @@ func (s *usersStorage) Get(ctx context.Context, username string) (models.User, e
 
 // finishTx rollbacks transaction if error is provided.
 // If err is nil transaction is committed.
-func (s *usersStorage) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
+func (s *Storage) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
 	if err != nil {
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
 			return errors.Join(err, rollbackErr)

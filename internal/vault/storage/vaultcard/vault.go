@@ -24,11 +24,18 @@ type vault struct {
 	pool *pgxpool.Pool
 }
 
-func Vault(encrypter contentEncrypter, pool *pgxpool.Pool) *vault {
+func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
+	if pool == nil {
+		return nil, fmt.Errorf("nil postgres pool")
+	}
+	if encrypter == nil {
+		return nil, fmt.Errorf("nil vault encrypter")
+	}
+
 	return &vault{
 		enc:  encrypter,
 		pool: pool,
-	}
+	}, nil
 }
 
 func (v *vault) Save(ctx context.Context, card models.CreditCard) error {

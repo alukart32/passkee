@@ -1,0 +1,5 @@
+{
+    "grpc_server_address": "localhost:50052",
+    "postgres_dsn": "postgres://postgres:postgres@localhost:5432/passkee",
+    "vault_key": "Zuy4B2CiHyYKtaoCV9clnuMdi7eV3cOi"
+}

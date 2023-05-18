@@ -40,7 +40,7 @@ type authService struct {
 	userSaver    userSaver
 }
 type userSaver interface {
-	Save(models.User) error
+	Save(context.Context, models.User) error
 }
 
 func (s *authService) LogOn(ctx context.Context, in *authpb.LogOnRequest) (*emptypb.Empty, error) {
@@ -63,7 +63,7 @@ func (s *authService) LogOn(ctx context.Context, in *authpb.LogOnRequest) (*empt
 		return nil, status.Errorf(codes.Internal, "can't process password from request: %v", err)
 	}
 
-	err = s.userSaver.Save(models.User{
+	err = s.userSaver.Save(ctx, models.User{
 		ID:       uuid.New().String(),
 		Username: username,
 		Password: password,

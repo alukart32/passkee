@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS "users" (
-    username VARCHAR PRIMARY KEY CHECK(LENGTH(username) > 0),
+    id uuid  PRIMARY KEY,
+    username VARCHAR NOT NULL CHECK(LENGTH(username) > 0),
     password VARCHAR NOT NULL CHECK(LENGTH(password) > 0)
-    id uuid  NOT NULL,
 );
 
 CREATE TYPE "blob_object_typ" AS ENUM (
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "blob_objects" (
 	name    BYTEA NOT NULL CHECK(LENGTH(name) > 0),
 	typ     blob_object_typ NOT NULL,
   blob    BYTEA NOT NULL,
-	notes   BYTEA,
+	notes   BYTEA
 );
 
 CREATE TABLE IF NOT EXISTS "passwords" (

@@ -70,3 +70,11 @@ grpc-gen-v1:
 .PHONY: docker-clear
 docker-clear: drop-db postgres-stop
 	docker rm $(pg_name)
+
+.PHONY: run-with-db
+run-with-db:
+	go run ./cmd/vault/main.go -a "localhost:50052" -v "Zuy4B2CiHyYKtaoCV9clnuMdi7eV3cOi" -d "postgres://$(pg_user):$(pg_user_pass)@localhost:5432/$(db_name)"
+
+.PHONY: run-with-config
+run-with-config:
+	go run ./cmd/vault/main.go -c "./configs/config.json"
