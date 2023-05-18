@@ -8,7 +8,6 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -40,9 +39,6 @@ func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*auth
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't start a new session: %v", err)
 	}
-
-	md := metadata.Pairs("session_id", base64.StdEncoding.EncodeToString([]byte(sess.Id)))
-	grpc.SetHeader(ctx, md)
 
 	return &authpb.ServerSession{
 		Id:  base64.StdEncoding.EncodeToString([]byte(sess.Id)),

@@ -71,7 +71,7 @@ func Cmd() *cobra.Command {
 	}
 	root.RunE = logon
 
-	root.Flags().StringVarP(&remoteAddr, "addr", "a", "http://localhost:8080", "vault remote address")
+	root.Flags().StringVarP(&remoteAddr, "addr", "a", "", "vault remote address")
 	root.MarkFlagRequired("addr")
 	root.Flags().StringVarP(&username, "username", "u", "", "username")
 	root.Flags().StringVarP(&password, "password", "p", "", "password")
@@ -109,7 +109,7 @@ func logon(cmd *cobra.Command, args []string) error {
 
 	logonCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	_, err = client.LogOn(logonCtx, &authpb.LogOnRequest{
+	_, err = client.LogOn(sessHandler.AuthContext(logonCtx), &authpb.LogOnRequest{
 		Username: _username,
 		Password: _password,
 	})

@@ -3,6 +3,7 @@ package v1
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
@@ -21,7 +22,7 @@ type connHandler interface {
 // MethodsForAuthSkip returns a list of gRPC methods for auth skip.
 func MethodsForAuthSkip() []string {
 	skipMethods := []string{
-		authpb.Auth_ServiceDesc.ServiceName,
+		authpb.Auth_LogOn_FullMethodName,
 		authpb.Session_Handshake_FullMethodName,
 		authpb.Session_Terminate_FullMethodName,
 	}
@@ -49,5 +50,11 @@ func sessionFromCtx(ctx context.Context) string {
 			sessionID = values[0]
 		}
 	}
-	return sessionID
+
+	id, err := base64.StdEncoding.DecodeString(sessionID)
+	if err != nil {
+		return ""
+	}
+
+	return string(id)
 }

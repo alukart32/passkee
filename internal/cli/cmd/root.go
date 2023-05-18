@@ -12,7 +12,6 @@ import (
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/bincmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/cardcmd"
-	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/infocmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/logoncmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/passcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/textcmd"
@@ -35,7 +34,7 @@ func Execute() {
 
 func init() {
 	Root.AddCommand(
-		infocmd.Cmd,
+		verCmd,
 		logoncmd.Cmd(),
 		bincmd.Cmd(scanConnInfo),
 		textcmd.Cmd(scanConnInfo),
@@ -44,9 +43,22 @@ func init() {
 	)
 }
 
+var (
+	Version   string
+	BuildTime string
+)
+var verCmd = &cobra.Command{
+	Use:     "version",
+	Short:   "build info",
+	Aliases: []string{"v", "ver"},
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("ver: %v, buildTime: %v", Version, BuildTime)
+	},
+}
+
 func scanConnInfo() (conn.Info, error) {
 	var (
-		remoteAddr = "http://localhost:8080"
+		remoteAddr = "localhost:50052"
 		username   string
 		password   []byte
 	)
