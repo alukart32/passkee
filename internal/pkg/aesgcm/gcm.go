@@ -73,7 +73,7 @@ func (e *encrypter) DecryptBlocks(ciphertext []byte) ([]byte, error) {
 
 	cBuf := bytes.NewBuffer(ciphertext)
 
-	blockNo := uint64(1)
+	blockNo := uint64(0)
 	plaintext := make([][]byte, 1+(len(ciphertext)-1)/blockSize)
 	for cBuf.Len() > 0 {
 		ciphertext := cBuf.Next(int(blockSize))

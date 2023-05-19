@@ -53,13 +53,13 @@ message Chunk {
 }
 
 message DownloadObjectRequest {
-  string name = 1;
+  bytes name = 1;
   ObjectType typ = 2;
 }
 
 message DownloadObjectResponse {
   message ObjectInfo {
-    optional string notes = 1;
+    optional bytes notes = 1;
   }
 
   oneof data {
@@ -69,12 +69,12 @@ message DownloadObjectResponse {
 }
 
 message UpdateObjectInfoRequest {
-  string name = 1;
+  bytes name = 1;
   ObjectType typ = 2;
 
   message ObjectInfo {
-    optional string name = 1;
-    optional string notes = 2;
+    optional bytes name = 1;
+    optional bytes notes = 2;
   }
   ObjectInfo info = 3;
 }
@@ -85,13 +85,10 @@ message IndexObjectsRequest {
 }
 
 message IndexObjectsResponse {
-  message ObjectInfo {
-    string name = 1;
-  }
-  repeated ObjectInfo objects = 1;
+  repeated bytes names = 1;
 }
 
 message DeleteObjectRequest {
-  string name = 1;
+  bytes name = 1;
   ObjectType typ = 2;
 }

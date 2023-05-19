@@ -3,11 +3,11 @@ package vaultblob
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/vault/models"
 	"github.com/google/uuid"
@@ -55,11 +55,10 @@ type blobMeta struct {
 }
 
 func (v *vault) Save(ctx context.Context, blob models.Blob) error {
-	name, err := v.enc.Encrypt(blob.Meta.Obj.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare name for storing: %v", err)
-	}
-	var notes []byte
+	var (
+		err   error
+		notes []byte
+	)
 	if len(blob.Notes) != 0 {
 		notes, err = v.enc.Encrypt(blob.Notes)
 		if err != nil {
@@ -75,7 +74,7 @@ func (v *vault) Save(ctx context.Context, blob models.Blob) error {
 		Meta: blobMeta{
 			UserID: blob.Meta.Obj.UserID,
 			Typ:    blob.Meta.Typ.T,
-			Name:   name,
+			Name:   blob.Meta.Obj.Name,
 		},
 		ID:    uuid.New().String(),
 		Blob:  data,
@@ -98,28 +97,21 @@ func (v *vault) save(ctx context.Context, model blobModel) error {
 	}()
 
 	const query = `INSERT INTO blob_objects(id, user_id, name, typ, blob, notes)
-	VALUES ($1, $2, $3, $4, $5)`
+	VALUES ($1, $2, $3, $4, $5, $6)`
 
 	_, err = tx.Exec(ctx, query,
 		model.ID,
 		model.Meta.UserID,
 		model.Meta.Name,
 		model.Meta.Typ,
-		model.Blob,
-		model.Notes,
+		base64.StdEncoding.EncodeToString(model.Blob),
+		base64.StdEncoding.EncodeToString(model.Notes),
 	)
 	return err
 }
 
 func (v *vault) Get(ctx context.Context, meta models.BlobMeta) (models.Blob, error) {
-	recordName, err := v.enc.Encrypt(meta.Obj.Name)
-	if err != nil {
-		return models.Blob{}, fmt.Errorf("can't process record name: %v", err)
-	}
-	model, err := v.get(ctx, blobMeta{
-		meta.Obj.UserID,
-		meta.Typ.T,
-		recordName})
+	model, err := v.get(ctx, blobMeta{meta.Obj.UserID, meta.Typ.T, meta.Obj.Name})
 	if err != nil {
 		return models.Blob{}, err
 	}
@@ -156,39 +148,47 @@ func (v *vault) get(ctx context.Context, meta blobMeta) (blobModel, error) {
 	if err != nil {
 		return blobModel{}, err
 	}
+
+	blob, err := decodeBase64(m.Blob)
+	if err != nil {
+		return blobModel{}, err
+	}
+	m.Blob = blob
+
+	var notes []byte
+	if len(m.Notes) != 0 {
+		notes, err = decodeBase64(m.Notes)
+		if err != nil {
+			return blobModel{}, err
+		}
+
+	}
+	m.Notes = notes
+
 	return m, nil
 }
 
 func (v *vault) Index(ctx context.Context, userID string, typ models.BlobType) ([]models.Blob, error) {
-	records, err := v.index(ctx, userID, typ.T)
+	names, err := v.listNames(ctx, userID, typ.T)
 	if err != nil {
 		return nil, err
 	}
 
-	objects := make([]models.Blob, len(records))
-	for i, r := range records {
-		name, err := v.enc.Decrypt(r.Meta.Name)
-		if err != nil {
-			return nil, err
-		}
-		typ, err := models.ObjectTypeFromString(r.Meta.Typ)
-		if err != nil {
-			return nil, err
-		}
-
-		objects[i] = models.Blob{
+	records := make([]models.Blob, len(names))
+	for i, n := range names {
+		records[i] = models.Blob{
 			Meta: models.BlobMeta{
 				Obj: models.ObjectMeta{
-					Name: name,
+					Name: n,
 				},
 				Typ: typ,
 			},
 		}
 	}
-	return objects, nil
+	return records, nil
 }
 
-func (v *vault) index(ctx context.Context, userID string, typ string) ([]blobModel, error) {
+func (v *vault) listNames(ctx context.Context, userID string, typ string) ([][]byte, error) {
 	tx, err := v.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -201,43 +201,33 @@ func (v *vault) index(ctx context.Context, userID string, typ string) ([]blobMod
 		err = v.finishTx(ctx, tx, err)
 	}()
 
-	const query = `SELECT name, typ FROM blob_objects WHERE user_id = $1 AND typ = $2`
-	rows, err := tx.Query(ctx, query, userID)
+	const query = `SELECT name FROM blob_objects WHERE user_id = $1 AND typ = $2`
+	rows, err := tx.Query(ctx, query, userID, typ)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	records := make([]blobModel, 0)
+	names := make([][]byte, 0)
 	for rows.Next() {
-		var m blobModel
-		if err = rows.Scan(&m.Meta.Name, &m.Meta.Typ); err != nil {
+		var name []byte
+		if err = rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		records = append(records, m)
+		names = append(names, name)
 	}
 	if rows.Err() != nil {
 		return nil, err
 	}
-	return records, err
+	return names, err
 }
 
 func (v *vault) Update(ctx context.Context, meta models.BlobMeta, data models.Blob) error {
-	if len(data.Meta.Obj.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
+	if len(data.Meta.Obj.Name) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
 	}
+	var err error
 
-	recordName, err := v.enc.Encrypt(meta.Obj.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare record name: %v", err)
-	}
-	var newName []byte
-	if len(data.Meta.Obj.Name) != 0 {
-		newName, err = v.enc.Encrypt(data.Meta.Obj.Name)
-		if err != nil {
-			return fmt.Errorf("can't prepare new name for storing: %v", err)
-		}
-	}
 	var newNotes []byte
 	if len(data.Notes) != 0 {
 		newNotes, err = v.enc.Encrypt(data.Notes)
@@ -245,25 +235,17 @@ func (v *vault) Update(ctx context.Context, meta models.BlobMeta, data models.Bl
 			return fmt.Errorf("can't prepare new notes for storing: %v", err)
 		}
 	}
-	var newBlob []byte
-	if len(data.Data) != 0 {
-		newBlob, err = v.encBlob(ctx, data.Data)
-		if err != nil {
-			return fmt.Errorf("can't prepare new data for storing: %v", err)
-		}
-	}
 
 	return v.update(ctx,
 		blobMeta{
 			UserID: meta.Obj.UserID,
 			Typ:    meta.Typ.T,
-			Name:   recordName,
+			Name:   meta.Obj.Name,
 		},
 		blobModel{
 			Meta: blobMeta{
-				Name: newName,
+				Name: data.Meta.Obj.Name,
 			},
-			Blob:  newBlob,
 			Notes: newNotes,
 		})
 }
@@ -281,40 +263,46 @@ func (v *vault) update(ctx context.Context, meta blobMeta, model blobModel) erro
 		err = v.finishTx(ctx, tx, err)
 	}()
 
-	var qb strings.Builder
-	qb.WriteString("UPDATE blob_objects")
+	var (
+		fieldOrder = 0
+		args       []any
+		qb         strings.Builder
+	)
+	qb.WriteString("UPDATE blob_objects SET ")
 	if len(model.Meta.Name) != 0 {
-		qb.WriteString(" SET name = $1")
-	}
-	if len(model.Blob) != 0 {
-		qb.WriteString(" SET blob = $2")
+		fieldOrder++
+
+		qb.WriteString(fmt.Sprintf("name = $%d", fieldOrder))
+		args = append(args, model.Meta.Name)
 	}
 	if len(model.Notes) != 0 {
-		qb.WriteString(" SET notes = $3")
-	}
-	qb.WriteString(" WHERE user_id = $4 AND typ = $5")
+		if fieldOrder > 0 {
+			qb.WriteString(", ")
+		}
+		fieldOrder++
 
-	_, err = tx.Exec(ctx, qb.String(),
-		model.Meta.Name,
-		model.Blob,
-		model.Notes,
-		meta.UserID,
-		meta.Typ,
-	)
+		qb.WriteString(fmt.Sprintf("notes = $%d", fieldOrder))
+		args = append(args, base64.StdEncoding.EncodeToString(model.Notes))
+	}
+	if fieldOrder == 0 {
+		return fmt.Errorf("no data to update")
+	}
+
+	qb.WriteString(fmt.Sprintf(" WHERE user_id = $%d AND name = $%d",
+		fieldOrder+1, fieldOrder+2))
+	args = append(args, meta.UserID, meta.Name)
+
+	_, err = tx.Exec(ctx, qb.String(), args...)
 	return err
 }
 
 func (v *vault) Delete(ctx context.Context, meta models.BlobMeta) error {
-	recordName, err := v.enc.Encrypt(meta.Obj.Name)
-	if err != nil {
-		return fmt.Errorf("can't process a record name: %v", err)
-	}
-
-	const query = `DELETE blob_objects WHERE user_id = $1 AND typ = $2 AND name = $3`
-	_, err = v.pool.Exec(ctx, query,
+	const query = `DELETE FROM blob_objects WHERE
+	user_id = $1 AND typ = $2 AND name = $3`
+	_, err := v.pool.Exec(ctx, query,
 		meta.Obj.UserID,
 		meta.Typ.T,
-		recordName,
+		meta.Obj.Name,
 	)
 	return err
 }
@@ -322,11 +310,11 @@ func (v *vault) Delete(ctx context.Context, meta models.BlobMeta) error {
 const maxChunkSize = 4096
 
 func (v *vault) decBlob(ctx context.Context, d []byte) ([]byte, error) {
+	data := bytes.NewBuffer(d)
 	blocks := new(bytes.Buffer)
 
-	data := bytes.NewBuffer(d)
-	chunk := make([]byte, maxChunkSize)
-	for i := uint64(1); ; i++ {
+	chunk := make([]byte, maxChunkSize+28) // maxChunkSize + nonce + auth tag
+	for i := uint64(0); ; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -335,7 +323,7 @@ func (v *vault) decBlob(ctx context.Context, d []byte) ([]byte, error) {
 		_, err := data.Read(chunk)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Println(err)
+				return nil, err
 			}
 			break
 		}
@@ -351,7 +339,6 @@ func (v *vault) decBlob(ctx context.Context, d []byte) ([]byte, error) {
 		}
 		blocks.Write(block)
 	}
-
 	return blocks.Bytes(), nil
 }
 
@@ -360,7 +347,7 @@ func (v *vault) encBlob(ctx context.Context, d []byte) ([]byte, error) {
 	blocks := new(bytes.Buffer)
 
 	chunk := make([]byte, maxChunkSize)
-	for i := uint64(1); ; i++ {
+	for i := uint64(0); ; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -369,7 +356,7 @@ func (v *vault) encBlob(ctx context.Context, d []byte) ([]byte, error) {
 		_, err := data.Read(chunk)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Println(err)
+				return nil, err
 			}
 			break
 		}
@@ -385,94 +372,6 @@ func (v *vault) encBlob(ctx context.Context, d []byte) ([]byte, error) {
 		}
 		blocks.Write(block)
 	}
-
-	return blocks.Bytes(), nil
-}
-
-func (v *vault) encBlob2(ctx context.Context, d []byte) ([]byte, error) {
-	type chunk struct {
-		no   uint64
-		data []byte
-	}
-	chunks := make(chan chunk, 1)
-	errCh := make(chan error, 1)
-	stopCh := make(chan struct{}, 1)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		var err error
-		defer func() {
-			if err != nil {
-				errCh <- err
-			}
-			close(chunks)
-			wg.Done()
-		}()
-
-		buf := bytes.NewBuffer(d)
-		c := make([]byte, maxChunkSize)
-		for i := uint64(1); ; i++ {
-			select {
-			case <-ctx.Done():
-				err = ctx.Err()
-				return
-			case <-stopCh:
-				return
-			default:
-			}
-			_, err = buf.Read(c)
-			if err != nil {
-				return
-			}
-			chunks <- chunk{
-				no:   i,
-				data: c,
-			}
-		}
-	}()
-
-	blocks := new(bytes.Buffer)
-
-	wg.Add(1)
-	go func() {
-		var err error
-		defer func() {
-			if err != nil {
-				errCh <- err
-			}
-			wg.Done()
-		}()
-
-		for chunk := range chunks {
-			select {
-			case <-ctx.Done():
-				err = ctx.Err()
-				return
-			case <-stopCh:
-				return
-			default:
-			}
-
-			block, err := v.enc.EncryptBlock(chunk.data, chunk.no)
-			if err != nil {
-				return
-			}
-			blocks.Write(block)
-		}
-	}()
-
-	// Wait until all chunks are processed.
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	if err := <-errCh; err != nil {
-		close(stopCh)
-		return nil, err
-	}
-
 	return blocks.Bytes(), nil
 }
 
@@ -490,4 +389,13 @@ func (v *vault) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
 		}
 		return nil
 	}
+}
+
+func decodeBase64(src []byte) ([]byte, error) {
+	txt := make([]byte, base64.StdEncoding.DecodedLen(len(src)))
+	n, err := base64.StdEncoding.Decode(txt, src)
+	if err != nil {
+		return nil, err
+	}
+	return txt[:n], nil
 }

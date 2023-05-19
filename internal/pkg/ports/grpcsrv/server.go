@@ -95,6 +95,20 @@ func NewServer(cfg Config, authOpts grpcauth.AuthOpts) (*Server, error) {
 				recovery.WithRecoveryHandler(recoveryHandler),
 			),
 		),
+		grpc.ChainStreamInterceptor(
+			otelgrpc.StreamServerInterceptor(),
+			logging.StreamServerInterceptor(
+				logger(rpcLogger),
+				logOpts...,
+			),
+			selector.StreamServerInterceptor(
+				auth.StreamServerInterceptor(authOpts.Fn),
+				authOpts.Skip,
+			),
+			recovery.StreamServerInterceptor(
+				recovery.WithRecoveryHandler(recoveryHandler),
+			),
+		),
 	}
 	// Set up server.
 	s := Server{
