@@ -17,8 +17,9 @@ import (
 
 func getCmd() *cobra.Command {
 	cmd := cobra.Command{
-		Use:   "get",
-		Short: "Get text from vault",
+		Use:     "get",
+		Short:   "get text from vault",
+		Example: `get -n record_name`,
 	}
 	cmd.RunE = getE
 
@@ -51,12 +52,12 @@ func getE(cmd *cobra.Command, args []string) error {
 	stream, err := client.DownloadObject(
 		sessHandler.AuthContext(getCtx),
 		&blobpb.DownloadObjectRequest{
-			Name: string(recordName),
-			Typ:  blobpb.ObjectType_OBJECT_TEXT,
+			Name: recordName,
+			Typ:  blobpb.ObjectType_OBJECT_BIN,
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("can't download: %v, details: %v", err, stream.RecvMsg(nil))
+		return fmt.Errorf("can't download: %v", err)
 	}
 
 	// Read first message.
@@ -65,7 +66,7 @@ func getE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't read object info: %v", err)
 	}
 
-	notes, err := encrypter.Decrypt([]byte(*resp.GetInfo().Notes))
+	notes, err := encrypter.Decrypt(resp.GetInfo().Notes)
 	if err != nil {
 		return fmt.Errorf("can't process notes from response: %v", err)
 	}
@@ -78,7 +79,7 @@ func getE(cmd *cobra.Command, args []string) error {
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("can't download text data: %v", err)
+			return fmt.Errorf("can't download bin data: %v", err)
 		}
 		data, err := encrypter.DecryptBlock(msg.GetChunk().Data, i)
 		if err != nil {
@@ -94,6 +95,7 @@ func getE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't close the stream: %v", err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Name: %v\nNotes: %v\n\n%s", name, string(notes), buf.String())
+	fmt.Fprintf(os.Stdout, "Record\n  name : %v\n  notes: %v\n--------------------\n%v",
+		name, string(notes), buf.String())
 	return nil
 }

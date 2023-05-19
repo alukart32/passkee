@@ -113,8 +113,9 @@ func (h *grpcHandler) Terminate() error {
 
 // AuthContext creates a new context for authorization.
 func (h *grpcHandler) AuthContext(ctx context.Context) context.Context {
+	creds := string(h.connInfo.Creds)
 	md := metadata.New(map[string]string{
-		"authorization": "basic " + string(h.connInfo.Creds),
+		"authorization": "basic " + creds,
 	})
 	md.Set("session_id", h.session.Id)
 

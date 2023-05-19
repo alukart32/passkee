@@ -15,8 +15,9 @@ import (
 
 func deleteCmd() *cobra.Command {
 	cmd := cobra.Command{
-		Use:   "delete",
-		Short: "delete text from vault",
+		Use:     "delete",
+		Short:   "delete text from vault",
+		Example: `delete -n record_name`,
 	}
 	cmd.RunE = deleteE
 
@@ -46,10 +47,12 @@ func deleteE(cmd *cobra.Command, args []string) error {
 	deleteCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	_, err = client.DeleteObject(deleteCtx, &blobpb.DeleteObjectRequest{
-		Name: string(recordName),
-		Typ:  blobpb.ObjectType_OBJECT_TEXT,
-	})
+	_, err = client.DeleteObject(
+		sessHandler.AuthContext(deleteCtx),
+		&blobpb.DeleteObjectRequest{
+			Name: recordName,
+			Typ:  blobpb.ObjectType_OBJECT_BIN,
+		})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
 			err = fmt.Errorf("can't delete bin record: %v", e.Message())

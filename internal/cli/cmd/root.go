@@ -59,7 +59,6 @@ var verCmd = &cobra.Command{
 func scanConnInfo() (conn.Info, error) {
 	var remoteAddr = "localhost:50052"
 
-	// TODO:
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Vault server [%v]: ", remoteAddr)
 
@@ -98,8 +97,6 @@ func scanConnInfo() (conn.Info, error) {
 		log.Fatalln("Empty password")
 	}
 
-	// username := "username"
-	// rawPassword := "password"
 	hash := sha256.New()
 	hash.Write([]byte(rawPassword))
 
