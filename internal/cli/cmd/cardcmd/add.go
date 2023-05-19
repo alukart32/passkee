@@ -55,13 +55,12 @@ func addE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't prepare data for sending: %v", err)
 	}
 
-	var recordNotes string
+	var recordNotes []byte
 	if len(notes) != 0 {
-		tmp, err := encrypter.Encrypt([]byte(notes))
+		recordNotes, err = encrypter.Encrypt([]byte(notes))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		recordNotes = string(tmp)
 	}
 
 	// Prepare gRPC auth client.
@@ -81,19 +80,21 @@ func addE(cmd *cobra.Command, args []string) error {
 	// Prepare payload.
 	in := creditcardpb.AddCreditCardRequest{
 		Card: &creditcardpb.CreditCard{
-			Name:  string(recordName),
-			Data:  string(recordData),
-			Notes: &recordNotes,
+			Name:  recordName,
+			Data:  recordData,
+			Notes: recordNotes,
 		},
 	}
 	_, err = client.AddCreditCard(sessHandler.AuthContext(addCtx), &in)
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't add credit card: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}
 		return err
 	}
+
+	fmt.Println("record added")
 	return nil
 }

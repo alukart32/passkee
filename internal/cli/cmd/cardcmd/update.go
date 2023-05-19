@@ -39,35 +39,34 @@ func updateE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't prepare data for sending: %v", err)
 	}
 
-	var newName string
+	var newName []byte
 	if len(newRecordName) != 0 {
-		b, err := encrypter.Encrypt([]byte(newRecordName))
+		newName, err = encrypter.Encrypt([]byte(newRecordName))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newName = string(b)
 	}
 
-	data := args[0]
-	var newData string
-	if len(data) > 0 {
-		if !cardReg.MatchString(data) {
+	var newData []byte
+	if len(args) != 0 {
+		if len(args) > 1 {
+			log.Fatal("too many args")
+		}
+		if !cardReg.MatchString(args[0]) {
 			return fmt.Errorf("invalid format, must be credit_card_number:mm/YYYY:cvv:SURENAME_NAME")
 		}
-		b, err := encrypter.Encrypt([]byte(data))
+		newData, err = encrypter.Encrypt([]byte(args[0]))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newData = string(b)
 	}
 
-	var newNotes string
+	var newNotes []byte
 	if len(notes) != 0 {
-		b, err := encrypter.Encrypt([]byte(notes))
+		newNotes, err = encrypter.Encrypt([]byte(notes))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newNotes = string(b)
 	}
 
 	// Prepare gRPC auth client.
@@ -84,18 +83,19 @@ func updateE(cmd *cobra.Command, args []string) error {
 	updCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err = client.UpdateCreditCard(sessHandler.AuthContext(updCtx), &creditcardpb.UpdateCreditCardRequest{
-		Name: string(recordName),
-		Card: &creditcardpb.UpdateCreditCardRequest_CreditCard{
-			Name:  &newName,
-			Data:  &newData,
-			Notes: &newNotes,
-		},
-	})
+	_, err = client.UpdateCreditCard(sessHandler.AuthContext(updCtx),
+		&creditcardpb.UpdateCreditCardRequest{
+			Name: recordName,
+			Card: &creditcardpb.UpdateCreditCardRequest_CreditCard{
+				Name:  newName,
+				Data:  newData,
+				Notes: newNotes,
+			},
+		})
 	if err != nil {
 		if err != nil {
 			if e, ok := status.FromError(err); ok {
-				err = fmt.Errorf("can't update credit card: %v", e.Message())
+				err = fmt.Errorf("%v", e.Message())
 			} else {
 				err = fmt.Errorf("can't parse %v", err)
 			}

@@ -57,12 +57,9 @@ var verCmd = &cobra.Command{
 }
 
 func scanConnInfo() (conn.Info, error) {
-	var (
-		remoteAddr = "localhost:50052"
-		username   string
-		password   []byte
-	)
+	var remoteAddr = "localhost:50052"
 
+	// TODO:
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Vault server [%v]: ", remoteAddr)
 
@@ -84,25 +81,29 @@ func scanConnInfo() (conn.Info, error) {
 	if err != nil {
 		log.Fatalf("Error: %v\n", err)
 	}
-	username = strings.TrimSpace(usernameStr)
+	username := strings.TrimSpace(usernameStr)
 	if len(username) == 0 {
 		log.Fatalln("Empty username")
 	}
 
-	fmt.Printf("Authentication required for %v\nPassword: ", remoteAddr)
+	fmt.Printf("\nAuthentication required for %v\nPassword: ", remoteAddr)
 	rawPassword, err := reader.ReadString('\n')
 	if err != nil {
 		log.Fatalf("Error: %v\n", err)
 	}
+	fmt.Println()
+
 	rawPassword = strings.TrimSpace(rawPassword)
 	if len(rawPassword) == 0 {
 		log.Fatalln("Empty password")
 	}
+
+	// username := "username"
+	// rawPassword := "password"
 	hash := sha256.New()
 	hash.Write([]byte(rawPassword))
-	password = hash.Sum(nil)
 
-	creds := fmt.Sprintf("%s:%v", username, password)
+	creds := fmt.Sprintf("%v:%v", username, string(hash.Sum(nil)[:]))
 	creds = base64.StdEncoding.EncodeToString([]byte(creds))
 
 	return conn.Info{

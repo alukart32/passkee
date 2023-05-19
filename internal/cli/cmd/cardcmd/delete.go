@@ -48,11 +48,11 @@ func delete(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	_, err = client.DeleteCreditCard(sessHandler.AuthContext(deleteCtx), &creditcardpb.DeleteCreditCardRequest{
-		Name: string(recordName),
+		Name: recordName,
 	})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't delete credit card: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}
