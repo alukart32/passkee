@@ -2,10 +2,12 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/vault/models"
+	"github.com/alukart32/yandex/practicum/passkee/internal/vault/storage"
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/passwordpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -67,12 +69,12 @@ func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.A
 	}
 	dataRegx := regexp.MustCompile(`^([0-9A-Za-z@#$%*_^\\]{1,15}):([0-9A-Za-z@#$%*_^\\]{1,15})$`)
 	if !dataRegx.MatchString(string(data)) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid password pair format", err)
+		return nil, status.Error(codes.InvalidArgument, "invalid password pair format")
 	}
 
 	var notes []byte
-	if in.Password.Notes != nil {
-		notes, err = encrypter.Decrypt([]byte(*in.Password.Notes))
+	if len(in.Password.Notes) != 0 {
+		notes, err = encrypter.Decrypt(in.Password.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process notes from request: %v", err)
 		}
@@ -87,7 +89,10 @@ func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.A
 		Notes: notes,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't save a new password: %v", err)
+		if errors.Is(storage.ErrNameUniqueViolation, err) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "can't save a new record: %v", err)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -124,19 +129,18 @@ func (s *passwordVaultService) GetPassword(ctx context.Context, in *passwordpb.G
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't prepare record data for response: %v", err)
 	}
-	var notes string
+	var notes []byte
 	if len(pass.Notes) != 0 {
-		b, err := encrypter.Encrypt(pass.Notes)
+		notes, err = encrypter.Encrypt(pass.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare record notes for response: %v", err)
 		}
-		notes = string(b)
 	}
 
 	return &passwordpb.Password{
 		Name:  in.Name,
-		Data:  string(data),
-		Notes: &notes,
+		Data:  data,
+		Notes: notes,
 	}, nil
 }
 
@@ -159,13 +163,13 @@ func (s *passwordVaultService) IndexPasswords(ctx context.Context, _ *emptypb.Em
 		return nil, status.Errorf(codes.Internal, "can't prepare session: %v", err)
 	}
 
-	names := make([]string, len(records))
+	names := make([][]byte, len(records))
 	for i, v := range records {
 		name, err := encrypter.Encrypt(v.Meta.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare data for sending: %v", err)
 		}
-		names[i] = string(name)
+		names[i] = name
 	}
 	return &passwordpb.IndexPasswordsResponse{Names: names}, nil
 }
@@ -190,32 +194,31 @@ func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb
 	}
 
 	var newName []byte
-	if len(*in.Password.Name) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Password.Name))
+	if len(in.Password.Name) != 0 {
+		newName, err = encrypter.Decrypt(in.Password.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
 		}
-		newName = b
 	}
 	var newData []byte
-	if len(*in.Password.Data) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Password.Data))
+	if len(in.Password.Data) != 0 {
+		newData, err = encrypter.Decrypt(in.Password.Data)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process a new data from request: %v")
 		}
-		newData = b
+
+		dataRegx := regexp.MustCompile(`^([0-9A-Za-z@#$%*_^\\]{1,15}):([0-9A-Za-z@#$%*_^\\]{1,15})$`)
+		if !dataRegx.MatchString(string(newData)) {
+			return nil, status.Error(codes.InvalidArgument, "invalid password pair format")
+		}
 	}
-	dataRegx := regexp.MustCompile(`^([0-9A-Za-z@#$%*_^\\]{1,15}):([0-9A-Za-z@#$%*_^\\]{1,15})$`)
-	if !dataRegx.MatchString(string(newData)) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid password pair format", err)
-	}
+
 	var newNotes []byte
-	if len(*in.Password.Notes) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Password.Notes))
+	if len(in.Password.Notes) != 0 {
+		newNotes, err = encrypter.Decrypt(in.Password.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
 		}
-		newNotes = b
 	}
 
 	userID := userIDFromCtx(ctx)
@@ -254,7 +257,10 @@ func (s *passwordVaultService) DeletePassword(ctx context.Context, in *passwordp
 	}
 
 	userID := userIDFromCtx(ctx)
-	if err := s.vault.Delete(ctx, models.ObjectMeta{userID, recordName}); err != nil {
+	if err := s.vault.Delete(ctx, models.ObjectMeta{
+		UserID: userID,
+		Name:   recordName,
+	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "can't delete password record: %v", err)
 	}
 	return &emptypb.Empty{}, nil

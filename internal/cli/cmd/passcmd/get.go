@@ -49,11 +49,11 @@ func getE(cmd *cobra.Command, args []string) error {
 
 	resp, err := client.GetPassword(sessHandler.AuthContext(getCtx),
 		&passwordpb.GetPasswordRequest{
-			Name: string(recordName),
+			Name: recordName,
 		})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't get password: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}
@@ -65,12 +65,16 @@ func getE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't read response data: %v", err)
 	}
 
-	recordNotes, err := encrypter.Decrypt([]byte(*resp.Notes))
-	if err != nil {
-		return fmt.Errorf("can't read response data: %v", err)
+	var recordNotes string
+	if len(resp.Notes) != 0 {
+		b, err := encrypter.Decrypt(resp.Notes)
+		if err != nil {
+			return fmt.Errorf("can't read response data: %v", err)
+		}
+		recordNotes = string(b)
 	}
 
-	fmt.Printf("\nName: %v\nEntry: %v\nNotes: %v",
-		name, string(recordData), string(recordNotes))
+	fmt.Printf("Record\n  name : %v\n  data : %v\n  notes: %v",
+		name, string(recordData), recordNotes)
 	return nil
 }
