@@ -2,7 +2,6 @@ package textcmd
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/session"
@@ -28,6 +27,7 @@ var (
 	sessHandler sessionHandler
 	encrypter   dataEncrypter
 )
+
 var root = &cobra.Command{
 	Use: "text [options]",
 }
@@ -39,8 +39,7 @@ func Cmd(
 		// Read user input.
 		connInfo, err := connInfoProvider()
 		if err != nil {
-			fmt.Println(err)
-			return
+			log.Fatal(err)
 		}
 
 		// Create a new session handler.
@@ -52,7 +51,7 @@ func Cmd(
 		}
 		encrypter, err = clientSession.DataEncrypter()
 		if err != nil {
-			log.Fatalf("can't prepare data encrypter: %v", err)
+			log.Fatal(err)
 		}
 	}
 	root.PersistentPostRun = func(cmd *cobra.Command, args []string) {

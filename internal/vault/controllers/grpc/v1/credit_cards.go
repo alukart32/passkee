@@ -2,10 +2,12 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/vault/models"
+	"github.com/alukart32/yandex/practicum/passkee/internal/vault/storage"
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/creditcardpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -69,12 +71,12 @@ func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditca
 	}
 	dataRegx := regexp.MustCompile(`([0-9]+):((0?[1-9]|1[012])\/[0-9]{4}):([0-9]{3})(:([A-Z]+)_([A-Z]+))?`)
 	if !dataRegx.MatchString(string(data)) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid credit card format", err)
+		return nil, status.Error(codes.InvalidArgument, "invalid credit card format")
 	}
 
 	var notes []byte
-	if in.Card.Notes != nil {
-		notes, err = encrypter.Decrypt([]byte(*in.Card.Notes))
+	if len(in.Card.Notes) != 0 {
+		notes, err = encrypter.Decrypt(in.Card.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process notes from request: %v", err)
 		}
@@ -90,7 +92,10 @@ func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditca
 		Notes: notes,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't save a new credit card: %v", err)
+		if errors.Is(storage.ErrNameUniqueViolation, err) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "can't save a new record: %v", err)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -128,19 +133,18 @@ func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditca
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "can't prepare record data for response: %v", err)
 	}
-	var notes string
+	var notes []byte
 	if len(creditCard.Notes) != 0 {
-		b, err := encrypter.Encrypt(creditCard.Notes)
+		notes, err = encrypter.Encrypt(creditCard.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare record notes for response: %v", err)
 		}
-		notes = string(b)
 	}
 
 	return &creditcardpb.CreditCard{
 		Name:  in.Name,
-		Data:  string(data),
-		Notes: &notes,
+		Data:  data,
+		Notes: notes,
 	}, nil
 }
 
@@ -163,17 +167,15 @@ func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, _ *emptyp
 		return nil, status.Errorf(codes.Internal, "can't prepare session: %v", err)
 	}
 
-	cards := make([]*creditcardpb.IndexCreditCardsResponse_CreditCard, len(records))
+	names := make([][]byte, len(records))
 	for i, v := range records {
 		name, err := encrypter.Encrypt(v.Meta.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare data for sending: %v", err)
 		}
-		cards[i] = &creditcardpb.IndexCreditCardsResponse_CreditCard{
-			Name: string(name),
-		}
+		names[i] = name
 	}
-	return &creditcardpb.IndexCreditCardsResponse{Cards: cards}, nil
+	return &creditcardpb.IndexCreditCardsResponse{Names: names}, nil
 }
 
 func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *creditcardpb.UpdateCreditCardRequest) (
@@ -197,32 +199,30 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 	}
 
 	var newName []byte
-	if len(*in.Card.Name) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Card.Name))
+	if len(in.Card.Name) != 0 {
+		newName, err = encrypter.Decrypt(in.Card.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
 		}
-		newName = b
 	}
 	var newData []byte
-	if len(*in.Card.Data) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Card.Data))
+	if len(in.Card.Data) != 0 {
+		newData, err = encrypter.Decrypt([]byte(in.Card.Data))
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process new data from request: %v")
 		}
-		newData = b
-	}
-	dataRegx := regexp.MustCompile(`([0-9]+):((0?[1-9]|1[012])\/[0-9]{4}):([0-9]{3})(:([A-Z]+)_([A-Z]+))?`)
-	if !dataRegx.MatchString(string(newData)) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid password pair format", err)
+
+		dataRegx := regexp.MustCompile(`([0-9]+):((0?[1-9]|1[012])\/[0-9]{4}):([0-9]{3})(:([A-Z]+)_([A-Z]+))?`)
+		if !dataRegx.MatchString(string(newData)) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid password pair format", err)
+		}
 	}
 	var newNotes []byte
-	if len(*in.Card.Notes) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Card.Notes))
+	if len(in.Card.Notes) != 0 {
+		newNotes, err = encrypter.Decrypt(in.Card.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
 		}
-		newNotes = b
 	}
 
 	userID := userIDFromCtx(ctx)
@@ -239,7 +239,7 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 			Notes: newNotes,
 		})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't reset credit card record: %v", err)
+		return nil, status.Errorf(codes.Internal, "can't update credit card record: %v", err)
 	}
 
 	return &emptypb.Empty{}, nil

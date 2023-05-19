@@ -15,11 +15,11 @@ service CreditCardsVault {
 }
 
 message CreditCard {
-  string name = 1;
+  bytes name = 1;
   // The field will contain credit card details in the format number:month/year:cvv:owner,
   // where the owner can be omitted.
-  string data = 2;
-  optional string notes = 3;
+  bytes data = 2;
+  optional bytes notes = 3;
 }
 
 message AddCreditCardRequest {
@@ -27,29 +27,25 @@ message AddCreditCardRequest {
 }
 
 message GetCreditCardRequest {
-  string name = 1;
+  bytes name = 1;
 }
 
 message UpdateCreditCardRequest {
-  string name = 1;
+  bytes name = 1;
 
   // The CreditCard resource which replaces the resource on the server.
   message CreditCard {
-    optional string name = 1;
-    optional string data = 2;
-    optional string notes = 3;
+    optional bytes name = 1;
+    optional bytes data = 2;
+    optional bytes notes = 3;
   }
   CreditCard card = 2;
 }
 
 message IndexCreditCardsResponse {
-  message CreditCard {
-    string name = 1;
-  }
-  repeated CreditCard cards = 1;
+  repeated bytes names = 1;
 }
 
 message DeleteCreditCardRequest {
-  string name = 1;
-  string number = 2;
+  bytes name = 1;
 }

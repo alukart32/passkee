@@ -39,24 +39,31 @@ func indexE(cmd *cobra.Command, args []string) error {
 	indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	resp, err := client.IndexCreditCards(sessHandler.AuthContext(indexCtx), &emptypb.Empty{})
+	resp, err := client.IndexCreditCards(
+		sessHandler.AuthContext(indexCtx),
+		&emptypb.Empty{})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't index credit cards: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}
 		return err
 	}
 
+	if len(resp.Names) == 0 {
+		fmt.Println("No records")
+		return nil
+	}
+
 	var sb strings.Builder
-	for i, v := range resp.Cards {
-		name, err := encrypter.Decrypt([]byte(v.Name))
+	for i, n := range resp.Names {
+		name, err := encrypter.Decrypt(n)
 		if err != nil {
 			return fmt.Errorf("can't read response data: %v", err)
 		}
 
-		fmt.Fprintf(&sb, "%d. %v\n", i, string(name))
+		fmt.Fprintf(&sb, "  %d. %v\n", i+1, string(name))
 	}
 	fmt.Printf("Records\n%v", sb.String())
 	return nil

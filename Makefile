@@ -78,3 +78,9 @@ run-with-db:
 .PHONY: run-with-config
 run-with-config:
 	go run ./cmd/vault/main.go -c "./configs/config.json"
+
+.PHONY: build-cli
+build-cli:
+	go build -C ./cmd/cli/ -ldflags \
+	"-X github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd.Version=v1.0.0 \
+	-X 'github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd.BuildTime=$(date +'%Y/%m/%d %H:%M:%S')'"

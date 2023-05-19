@@ -36,12 +36,6 @@ var (
 	encrypter   dataEncrypter
 )
 
-var root = &cobra.Command{
-	Use:     "logon",
-	Example: "logon -a server_address -u username -p password",
-	Short:   "Log on to the server",
-}
-
 var (
 	remoteAddr string
 	username   string
@@ -49,7 +43,12 @@ var (
 )
 
 func Cmd() *cobra.Command {
-	root.PreRunE = func(cmd *cobra.Command, args []string) error {
+	cmd := cobra.Command{
+		Use:     "logon",
+		Example: "logon -a server_address -u username -p password",
+		Short:   "Log on to the server",
+	}
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		// Create a new session handler.
 		sessHandler = session.GrpcHandler()
 
@@ -66,21 +65,21 @@ func Cmd() *cobra.Command {
 
 		return nil
 	}
-	root.PostRunE = func(cmd *cobra.Command, args []string) error {
+	cmd.PostRunE = func(cmd *cobra.Command, args []string) error {
 		return sessHandler.Terminate()
 	}
-	root.RunE = logon
+	cmd.RunE = logonE
 
-	root.Flags().StringVarP(&remoteAddr, "addr", "a", "http://localhost:8080", "vault remote address")
-	root.MarkFlagRequired("addr")
-	root.Flags().StringVarP(&username, "username", "u", "", "username")
-	root.Flags().StringVarP(&password, "password", "p", "", "password")
-	root.MarkFlagsRequiredTogether("username", "password")
+	cmd.Flags().StringVarP(&remoteAddr, "addr", "a", "", "vault remote address")
+	cmd.MarkFlagRequired("addr")
+	cmd.Flags().StringVarP(&username, "username", "u", "", "username")
+	cmd.Flags().StringVarP(&password, "password", "p", "", "password")
+	cmd.MarkFlagsRequiredTogether("username", "password")
 
-	return root
+	return &cmd
 }
 
-func logon(cmd *cobra.Command, args []string) error {
+func logonE(cmd *cobra.Command, args []string) error {
 	hash := sha256.New()
 	hash.Write([]byte(password))
 	passwordHash := hash.Sum(nil)
@@ -109,10 +108,11 @@ func logon(cmd *cobra.Command, args []string) error {
 
 	logonCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	_, err = client.LogOn(logonCtx, &authpb.LogOnRequest{
-		Username: _username,
-		Password: _password,
-	})
+	_, err = client.LogOn(sessHandler.AuthContext(logonCtx),
+		&authpb.LogOnRequest{
+			Username: _username,
+			Password: _password,
+		})
 
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
@@ -120,7 +120,7 @@ func logon(cmd *cobra.Command, args []string) error {
 			case codes.DeadlineExceeded:
 				fmt.Println(e.Message())
 			case codes.Internal:
-				fmt.Printf("can't log on: %v", err)
+				fmt.Printf("%v", e.Message())
 			default:
 				fmt.Println(e.Code(), e.Message())
 			}
@@ -128,5 +128,6 @@ func logon(cmd *cobra.Command, args []string) error {
 			fmt.Printf("can't parse %v", err)
 		}
 	}
+	fmt.Println("successful logon")
 	return nil
 }

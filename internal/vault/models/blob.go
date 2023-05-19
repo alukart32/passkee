@@ -31,10 +31,11 @@ func ObjectTypeFromString(t string) (BlobType, error) {
 	if len(t) == 0 {
 		return UndefinedObjectType, fmt.Errorf("empty type")
 	}
+
 	switch t {
-	case "text":
+	case "OBJECT_TEXT":
 		return TextObjectType, nil
-	case "bin":
+	case "OBJECT_BIN":
 		return BinObjectType, nil
 	default:
 		return UndefinedObjectType, fmt.Errorf("undefined type %v", t)
@@ -46,7 +47,7 @@ func (t *BlobType) String() string {
 }
 
 var (
-	UndefinedObjectType = BlobType{T: "undefined"}
-	TextObjectType      = BlobType{T: "text"}
-	BinObjectType       = BlobType{T: "bin"}
+	UndefinedObjectType = BlobType{T: "UNDEFINED"}
+	TextObjectType      = BlobType{T: "TEXT"}
+	BinObjectType       = BlobType{T: "BIN"}
 )

@@ -2,13 +2,17 @@ package vaultcard
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/vault/models"
+	"github.com/alukart32/yandex/practicum/passkee/internal/vault/storage"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,10 +43,6 @@ func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 }
 
 func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
-	name, err := v.enc.Encrypt(card.Meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare name for storing: %v", err)
-	}
 	data, err := v.enc.Encrypt(card.Data)
 	if err != nil {
 		return fmt.Errorf("can't prepare data for storing: %v", err)
@@ -58,7 +58,7 @@ func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
 
 	err = v.save(ctx, creditCardModel{
 		UserID: card.Meta.UserID,
-		Name:   name,
+		Name:   card.Meta.Name,
 		Data:   data,
 		Notes:  notes,
 	})
@@ -93,18 +93,22 @@ func (v *vault) save(ctx context.Context, model creditCardModel) error {
 		uuid.New(),
 		model.UserID,
 		model.Name,
-		model.Data,
-		model.Notes,
+		base64.StdEncoding.EncodeToString(model.Data),
+		base64.StdEncoding.EncodeToString(model.Notes),
 	)
+
+	var pgErr *pgconn.PgError
+	if err != nil && errors.As(err, &pgErr) {
+		if pgerrcode.IsIntegrityConstraintViolation(pgErr.SQLState()) &&
+			pgErr.SQLState() == pgerrcode.UniqueViolation {
+			return storage.ErrNameUniqueViolation
+		}
+	}
 	return err
 }
 
 func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.CreditCard, error) {
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return models.CreditCard{}, fmt.Errorf("can't process record name: %v", err)
-	}
-	model, err := v.get(ctx, meta.UserID, string(recordName))
+	model, err := v.get(ctx, meta.UserID, meta.Name)
 	if err != nil {
 		return models.CreditCard{}, err
 	}
@@ -114,7 +118,7 @@ func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.CreditC
 		return models.CreditCard{}, err
 	}
 	var notes []byte
-	if len(model.Notes) > 0 {
+	if len(model.Notes) != 0 {
 		notes, err = v.enc.Decrypt(model.Notes)
 		if err != nil {
 			return models.CreditCard{}, err
@@ -128,44 +132,52 @@ func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.CreditC
 	}, nil
 }
 
-func (v *vault) get(ctx context.Context, userID, name string) (creditCardModel, error) {
+func (v *vault) get(ctx context.Context, userID string, recordName []byte) (creditCardModel, error) {
 	const query = `SELECT * FROM credit_cards WHERE user_id = $1 AND name = $2`
-	row := v.pool.QueryRow(ctx, query,
-		userID,
-		name,
-	)
+	row := v.pool.QueryRow(ctx, query, userID, recordName)
 
 	var m creditCardModel
 	err := row.Scan(&m.ID, &m.UserID, &m.Name, &m.Data, &m.Notes)
 	if err != nil {
 		return creditCardModel{}, err
 	}
+
+	data, err := decodeBase64(m.Data)
+	if err != nil {
+		return creditCardModel{}, err
+	}
+	m.Data = data
+
+	var notes []byte
+	if len(m.Notes) != 0 {
+		notes, err = decodeBase64(m.Notes)
+		if err != nil {
+			return creditCardModel{}, err
+		}
+	}
+	m.Notes = notes
+
 	return m, nil
 }
 
 func (v *vault) Index(ctx context.Context, userID string) ([]models.CreditCard, error) {
-	records, err := v.index(ctx, userID)
+	names, err := v.listNames(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	cards := make([]models.CreditCard, len(records))
-	for i, r := range records {
-		name, err := v.enc.Decrypt(r.Name)
-		if err != nil {
-			return nil, err
-		}
-
+	cards := make([]models.CreditCard, len(names))
+	for i, n := range names {
 		cards[i] = models.CreditCard{
 			Meta: models.ObjectMeta{
-				Name: name,
+				Name: n,
 			},
 		}
 	}
 	return cards, nil
 }
 
-func (v *vault) index(ctx context.Context, userID string) ([]creditCardModel, error) {
+func (v *vault) listNames(ctx context.Context, userID string) ([][]byte, error) {
 	tx, err := v.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -185,36 +197,26 @@ func (v *vault) index(ctx context.Context, userID string) ([]creditCardModel, er
 	}
 	defer rows.Close()
 
-	records := make([]creditCardModel, 0)
+	names := make([][]byte, 0)
 	for rows.Next() {
 		var m creditCardModel
 		if err = rows.Scan(&m.Name); err != nil {
 			return nil, err
 		}
-		records = append(records, m)
+		names = append(names, m.Name)
 	}
 	if rows.Err() != nil {
 		return nil, err
 	}
-	return records, err
+	return names, err
 }
 
 func (v *vault) Update(ctx context.Context, meta models.ObjectMeta, data models.CreditCard) error {
 	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
 	}
+	var err error
 
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare record name: %v", err)
-	}
-	var newName []byte
-	if len(data.Meta.Name) != 0 {
-		newName, err = v.enc.Encrypt(data.Meta.Name)
-		if err != nil {
-			return fmt.Errorf("can't prepare new name for storing: %v", err)
-		}
-	}
 	var newData []byte
 	if len(data.Data) != 0 {
 		newData, err = v.enc.Encrypt(data.Data)
@@ -232,15 +234,15 @@ func (v *vault) Update(ctx context.Context, meta models.ObjectMeta, data models.
 
 	return v.update(ctx,
 		meta.UserID,
-		string(recordName),
+		meta.Name,
 		creditCardModel{
-			Name:  newName,
+			Name:  data.Meta.Name,
 			Data:  newData,
 			Notes: newNotes,
 		})
 }
 
-func (v *vault) update(ctx context.Context, userID string, name string, model creditCardModel) error {
+func (v *vault) update(ctx context.Context, userID string, name []byte, model creditCardModel) error {
 	tx, err := v.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -253,39 +255,49 @@ func (v *vault) update(ctx context.Context, userID string, name string, model cr
 		err = v.finishTx(ctx, tx, err)
 	}()
 
-	var qb strings.Builder
-	qb.WriteString("UPDATE credit_cards")
+	var (
+		fieldOrder = 0
+		args       []any
+		qb         strings.Builder
+	)
+	qb.WriteString("UPDATE credit_cards SET ")
 	if len(model.Name) != 0 {
-		qb.WriteString(" SET name = $1")
+		fieldOrder++
+
+		qb.WriteString(fmt.Sprintf("name = $%d", fieldOrder))
+		args = append(args, model.Name)
 	}
 	if len(model.Data) != 0 {
-		qb.WriteString(" SET data = $2")
+		if fieldOrder > 0 {
+			qb.WriteString(", ")
+		}
+		fieldOrder++
+		qb.WriteString(fmt.Sprintf("data = $%d", fieldOrder))
+		args = append(args, base64.StdEncoding.EncodeToString(model.Data))
 	}
 	if len(model.Notes) != 0 {
-		qb.WriteString(" SET notes = $3")
-	}
-	qb.WriteString(" WHERE user_id = $4")
+		if fieldOrder > 0 {
+			qb.WriteString(", ")
+		}
+		fieldOrder++
 
-	_, err = tx.Exec(ctx, qb.String(),
-		model.Name,
-		model.Data,
-		model.Notes,
-		userID,
-	)
+		qb.WriteString(fmt.Sprintf("notes = $%d", fieldOrder))
+		args = append(args, base64.StdEncoding.EncodeToString(model.Notes))
+	}
+	if fieldOrder == 0 {
+		return fmt.Errorf("no data to update")
+	}
+
+	qb.WriteString(fmt.Sprintf(" WHERE user_id = $%d AND name = $%d", fieldOrder+1, fieldOrder+2))
+	args = append(args, userID, name)
+
+	_, err = tx.Exec(ctx, qb.String(), args...)
 	return err
 }
 
 func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't process a record name: %v", err)
-	}
-
-	const query = `DELETE credit_cards WHERE user_id = $1 AND name = $2`
-	_, err = v.pool.Exec(ctx, query,
-		meta.UserID,
-		recordName,
-	)
+	const query = `DELETE FROM credit_cards WHERE user_id = $1 AND name = $2`
+	_, err := v.pool.Exec(ctx, query, meta.UserID, meta.Name)
 	return err
 }
 
@@ -303,4 +315,13 @@ func (v *vault) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
 		}
 		return nil
 	}
+}
+
+func decodeBase64(src []byte) ([]byte, error) {
+	txt := make([]byte, base64.StdEncoding.DecodedLen(len(src)))
+	n, err := base64.StdEncoding.Decode(txt, src)
+	if err != nil {
+		return nil, err
+	}
+	return txt[:n], nil
 }

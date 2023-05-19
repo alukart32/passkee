@@ -89,7 +89,6 @@ func addE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("can't stream: %v", err)
 	}
-	stream.Context().Done()
 	// Send the object info.
 	err = stream.Send(&blobpb.UploadObjectRequest{
 		Data: &blobpb.UploadObjectRequest_Info{
@@ -132,7 +131,7 @@ func addE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("can't stream: %v, details: %v", err, stream.RecvMsg(nil))
 		}
 	}
-	err = stream.CloseSend()
+	_, err = stream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("can't close the stream: %v", err)
 	}
@@ -160,7 +159,7 @@ func readFile(filepath string) ([][]byte, error) {
 	// Read and encrypt file data in blocks.
 	fr := bufio.NewReader(f)
 	blocks := make([][]byte, 1+(size-1)/bufferSize)
-	for i := uint64(1); ; i++ {
+	for i := uint64(0); ; i++ {
 		tmp := make([]byte, bufferSize)
 		_, err := fr.Read(tmp)
 		if err != nil {
@@ -176,7 +175,7 @@ func readFile(filepath string) ([][]byte, error) {
 			return nil, fmt.Errorf("can't encrypt object data: %v", err)
 		}
 
-		blocks = append(blocks, b)
+		blocks[i] = b
 	}
 
 	return blocks, err

@@ -2,13 +2,17 @@ package vaultpass
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/vault/models"
+	"github.com/alukart32/yandex/practicum/passkee/internal/vault/storage"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,10 +43,6 @@ func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 }
 
 func (v *vault) Save(ctx context.Context, pass models.Password) error {
-	name, err := v.enc.Encrypt(pass.Meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare name for storing: %v", err)
-	}
 	data, err := v.enc.Encrypt(pass.Data)
 	if err != nil {
 		return fmt.Errorf("can't prepare data for storing: %v", err)
@@ -58,7 +58,7 @@ func (v *vault) Save(ctx context.Context, pass models.Password) error {
 
 	err = v.save(ctx, passwordModel{
 		UserID: pass.Meta.UserID,
-		Name:   name,
+		Name:   pass.Meta.Name,
 		Data:   data,
 		Notes:  notes,
 	})
@@ -93,18 +93,22 @@ func (v *vault) save(ctx context.Context, model passwordModel) error {
 		uuid.New(),
 		model.UserID,
 		model.Name,
-		model.Data,
-		model.Notes,
+		base64.StdEncoding.EncodeToString(model.Data),
+		base64.StdEncoding.EncodeToString(model.Notes),
 	)
+
+	var pgErr *pgconn.PgError
+	if err != nil && errors.As(err, &pgErr) {
+		if pgerrcode.IsIntegrityConstraintViolation(pgErr.SQLState()) &&
+			pgErr.SQLState() == pgerrcode.UniqueViolation {
+			return storage.ErrNameUniqueViolation
+		}
+	}
 	return err
 }
 
 func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.Password, error) {
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return models.Password{}, fmt.Errorf("can't process record name: %v", err)
-	}
-	model, err := v.get(ctx, meta.UserID, string(recordName))
+	model, err := v.get(ctx, meta.UserID, meta.Name)
 	if err != nil {
 		return models.Password{}, err
 	}
@@ -114,7 +118,7 @@ func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.Passwor
 		return models.Password{}, err
 	}
 	var notes []byte
-	if len(model.Notes) > 0 {
+	if len(model.Notes) != 0 {
 		notes, err = v.enc.Decrypt(model.Notes)
 		if err != nil {
 			return models.Password{}, err
@@ -128,44 +132,52 @@ func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.Passwor
 	}, nil
 }
 
-func (v *vault) get(ctx context.Context, userID, name string) (passwordModel, error) {
+func (v *vault) get(ctx context.Context, userID string, recordName []byte) (passwordModel, error) {
 	const query = `SELECT * FROM passwords WHERE user_id = $1 AND name = $2`
-	row := v.pool.QueryRow(ctx, query,
-		userID,
-		name,
-	)
+	row := v.pool.QueryRow(ctx, query, userID, recordName)
 
 	var m passwordModel
 	err := row.Scan(&m.ID, &m.UserID, &m.Name, &m.Data, &m.Notes)
 	if err != nil {
 		return passwordModel{}, err
 	}
+
+	data, err := decodeBase64(m.Data)
+	if err != nil {
+		return passwordModel{}, err
+	}
+	m.Data = data
+
+	var notes []byte
+	if len(m.Notes) != 0 {
+		notes, err = decodeBase64(m.Notes)
+		if err != nil {
+			return passwordModel{}, err
+		}
+	}
+	m.Notes = notes
+
 	return m, nil
 }
 
 func (v *vault) Index(ctx context.Context, userID string) ([]models.Password, error) {
-	records, err := v.index(ctx, userID)
+	names, err := v.listNames(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	passwords := make([]models.Password, len(records))
-	for i, r := range records {
-		name, err := v.enc.Decrypt([]byte(r.Name))
-		if err != nil {
-			return nil, err
-		}
-
+	passwords := make([]models.Password, len(names))
+	for i, n := range names {
 		passwords[i] = models.Password{
 			Meta: models.ObjectMeta{
-				Name: name,
+				Name: n,
 			},
 		}
 	}
 	return passwords, nil
 }
 
-func (v *vault) index(ctx context.Context, userID string) ([]passwordModel, error) {
+func (v *vault) listNames(ctx context.Context, userID string) ([][]byte, error) {
 	tx, err := v.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -185,36 +197,26 @@ func (v *vault) index(ctx context.Context, userID string) ([]passwordModel, erro
 	}
 	defer rows.Close()
 
-	records := make([]passwordModel, 0)
+	names := make([][]byte, 0)
 	for rows.Next() {
 		var m passwordModel
 		if err = rows.Scan(&m.Name); err != nil {
 			return nil, err
 		}
-		records = append(records, m)
+		names = append(names, m.Name)
 	}
 	if rows.Err() != nil {
 		return nil, err
 	}
-	return records, err
+	return names, err
 }
 
 func (v *vault) Reset(ctx context.Context, meta models.ObjectMeta, data models.Password) error {
 	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
 	}
+	var err error
 
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't prepare record name: %v", err)
-	}
-	var newName []byte
-	if len(data.Meta.Name) != 0 {
-		newName, err = v.enc.Encrypt(data.Meta.Name)
-		if err != nil {
-			return fmt.Errorf("can't prepare new name for storing: %v", err)
-		}
-	}
 	var newData []byte
 	if len(data.Data) != 0 {
 		newData, err = v.enc.Encrypt(data.Data)
@@ -232,15 +234,15 @@ func (v *vault) Reset(ctx context.Context, meta models.ObjectMeta, data models.P
 
 	return v.reset(ctx,
 		meta.UserID,
-		string(recordName),
+		meta.Name,
 		passwordModel{
-			Name:  newName,
+			Name:  data.Meta.Name,
 			Data:  newData,
 			Notes: newNotes,
 		})
 }
 
-func (v *vault) reset(ctx context.Context, userID string, name string, model passwordModel) error {
+func (v *vault) reset(ctx context.Context, userID string, name []byte, model passwordModel) error {
 	tx, err := v.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
 		AccessMode:     pgx.ReadWrite,
@@ -253,38 +255,51 @@ func (v *vault) reset(ctx context.Context, userID string, name string, model pas
 		err = v.finishTx(ctx, tx, err)
 	}()
 
-	var qb strings.Builder
-	qb.WriteString("UPDATE passwords")
+	var (
+		fieldOrder = 0
+		args       []any
+		qb         strings.Builder
+	)
+	qb.WriteString("UPDATE passwords SET ")
 	if len(model.Name) != 0 {
-		qb.WriteString(" SET name = $1")
+		fieldOrder++
+
+		qb.WriteString(fmt.Sprintf("name = $%d", fieldOrder))
+		args = append(args, model.Name)
 	}
 	if len(model.Data) != 0 {
-		qb.WriteString(" SET data = $2")
+		if fieldOrder > 0 {
+			qb.WriteString(", ")
+		}
+		fieldOrder++
+		qb.WriteString(fmt.Sprintf("data = $%d", fieldOrder))
+		args = append(args, base64.StdEncoding.EncodeToString(model.Data))
 	}
 	if len(model.Notes) != 0 {
-		qb.WriteString(" SET notes = $3")
-	}
-	qb.WriteString(" WHERE user_id = $4")
+		if fieldOrder > 0 {
+			qb.WriteString(", ")
+		}
+		fieldOrder++
 
-	_, err = tx.Exec(ctx, qb.String(),
-		model.Name,
-		model.Data,
-		model.Notes,
-		userID,
-	)
+		qb.WriteString(fmt.Sprintf("notes = $%d", fieldOrder))
+		args = append(args, base64.StdEncoding.EncodeToString(model.Notes))
+	}
+	if fieldOrder == 0 {
+		return fmt.Errorf("no data to update")
+	}
+
+	qb.WriteString(fmt.Sprintf(" WHERE user_id = $%d AND name = $%d", fieldOrder+1, fieldOrder+2))
+	args = append(args, userID, name)
+
+	_, err = tx.Exec(ctx, qb.String(), args...)
 	return err
 }
 
 func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
-	recordName, err := v.enc.Encrypt(meta.Name)
-	if err != nil {
-		return fmt.Errorf("can't process a record name: %v", err)
-	}
-
-	const query = `DELETE passwords WHERE user_id = $1 AND name = $2`
-	_, err = v.pool.Exec(ctx, query,
+	const query = `DELETE FROM passwords WHERE user_id = $1 AND name = $2`
+	_, err := v.pool.Exec(ctx, query,
 		meta.UserID,
-		recordName,
+		meta.Name,
 	)
 	return err
 }
@@ -303,4 +318,13 @@ func (v *vault) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
 		}
 		return nil
 	}
+}
+
+func decodeBase64(src []byte) ([]byte, error) {
+	txt := make([]byte, base64.StdEncoding.DecodedLen(len(src)))
+	n, err := base64.StdEncoding.Decode(txt, src)
+	if err != nil {
+		return nil, err
+	}
+	return txt[:n], nil
 }

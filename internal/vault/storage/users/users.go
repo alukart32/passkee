@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -39,12 +40,12 @@ func (s *Storage) Save(ctx context.Context, user models.User) error {
 		err = s.finishTx(ctx, tx, err)
 	}()
 
-	const query = `INSERT INTO users(username, password, id) VALUES($1, $2, $3)`
+	const query = `INSERT INTO users(id, username, password) VALUES($1, $2, $3)`
 
 	_, err = tx.Exec(ctx, query,
-		user.Username,
-		string(user.Password),
 		user.ID,
+		base64.StdEncoding.EncodeToString(user.Username),
+		base64.StdEncoding.EncodeToString(user.Password),
 	)
 
 	var pgErr *pgconn.PgError
@@ -58,19 +59,41 @@ func (s *Storage) Save(ctx context.Context, user models.User) error {
 }
 
 func (s *Storage) Get(ctx context.Context, username string) (models.User, error) {
-	const query = `SELECT * FROM users WHERE username = %1`
-	var user models.User
-	row := s.pool.QueryRow(ctx, query, username)
-	err := row.Scan(
-		&user.ID,
-		&user.Username,
-		&user.Password,
+	const query = `SELECT * FROM users WHERE username = $1`
+	var (
+		recordID       string
+		recordUsername []byte
+		recordPassword []byte
 	)
-	if err != nil && errors.Is(err, pgx.ErrNoRows) {
-		err = nil
+	row := s.pool.QueryRow(ctx, query, base64.StdEncoding.EncodeToString([]byte(username)))
+	err := row.Scan(
+		&recordID,
+		&recordUsername,
+		&recordPassword,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = nil
+		}
+		return models.User{}, err
 	}
 
-	return user, err
+	usernameBase64, err := decodeBase64(recordUsername)
+	if err != nil {
+		return models.User{}, fmt.Errorf("can't read data: %v", err)
+	}
+
+	passwordBase64, err := decodeBase64(recordPassword)
+	if err != nil {
+		return models.User{}, fmt.Errorf("can't read data: %v", err)
+	}
+	user := models.User{
+		ID:       recordID,
+		Username: usernameBase64,
+		Password: passwordBase64,
+	}
+
+	return user, nil
 }
 
 // finishTx rollbacks transaction if error is provided.
@@ -87,4 +110,13 @@ func (s *Storage) finishTx(ctx context.Context, tx pgx.Tx, err error) error {
 		}
 		return nil
 	}
+}
+
+func decodeBase64(src []byte) ([]byte, error) {
+	textBase64 := make([]byte, base64.StdEncoding.DecodedLen(len(src)))
+	n, err := base64.StdEncoding.Decode(textBase64, src)
+	if err != nil {
+		return nil, err
+	}
+	return textBase64[:n], nil
 }

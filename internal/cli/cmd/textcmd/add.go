@@ -2,12 +2,12 @@ package textcmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/blobpb"
@@ -18,7 +18,7 @@ import (
 
 func addCmd() *cobra.Command {
 	cmd := cobra.Command{
-		Use:   "add",
+		Use:   "add filepath",
 		Short: "put the new text in vault",
 		Example: `add -n demo_text -f filepath
 add -n demo_text "some text"`,
@@ -33,6 +33,7 @@ add -n demo_text "some text"`,
 
 	cmd.Flags().StringVarP(&name, "name", "n", "", "Name of the new record")
 	cmd.MarkFlagRequired("name")
+	cmd.Flags().StringVarP(&filepath, "filepath", "f", "", "Text file")
 	cmd.Flags().StringVarP(&notes, "notes", "", "", "Extra notes")
 
 	return &cmd
@@ -41,7 +42,7 @@ add -n demo_text "some text"`,
 var name, notes, filepath string
 
 const (
-	maxSize    = 1 << 20 // bytes
+	maxSize    = 1 << 20 // 1 MB
 	bufferSize = 4096    // bytes
 
 	rateLimitPeriod = time.Minute
@@ -55,29 +56,32 @@ func addE(cmd *cobra.Command, args []string) error {
 	)
 	if len(filepath) != 0 {
 		// Read the file and encrypt its data in blocks.
-		blocks, err = readFile(filepath)
+		blocks, err = readFile(args[0])
 		if err != nil {
 			return err
 		}
 	} else {
 		if len(args[0]) == 0 {
-			return fmt.Errorf("no text was provided")
+			return fmt.Errorf("nothing to save")
 		}
-		blocks, err = encData(args[0])
+		blocks, err = encData([]byte(args[0]))
 		if err != nil {
 			return err
 		}
 	}
+	if len(blocks) == 0 {
+		return fmt.Errorf("nothing to save")
+	}
 
 	encName, err := encrypter.Encrypt([]byte(name))
 	if err != nil {
-		return fmt.Errorf("can't encrypt object name: %v", err)
+		return fmt.Errorf("can't prepare data for sending: %v", err)
 	}
 	var encNotes []byte
 	if len(notes) != 0 {
 		encNotes, err = encrypter.Encrypt([]byte(notes))
 		if err != nil {
-			return fmt.Errorf("can't encrypt object notes: %v", err)
+			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
 	}
 
@@ -91,27 +95,26 @@ func addE(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	streamCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	client := blobpb.NewBlobVaultClient(conn)
+	uploadCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	client := blobpb.NewBlobVaultClient(conn)
-	stream, err := client.UploadObject(sessHandler.AuthContext(streamCtx))
+	stream, err := client.UploadObject(sessHandler.AuthContext(uploadCtx))
 	if err != nil {
-		return fmt.Errorf("can't upload text: %v", err)
+		return fmt.Errorf("can't stream: %v", err)
 	}
-
 	// Send the object info.
 	err = stream.Send(&blobpb.UploadObjectRequest{
 		Data: &blobpb.UploadObjectRequest_Info{
 			Info: &blobpb.UploadObjectRequest_ObjectInfo{
 				Name:  encName,
-				Typ:   blobpb.ObjectType_OBJECT_TEXT,
+				Typ:   blobpb.ObjectType_OBJECT_BIN,
 				Notes: encNotes,
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("can't send text info: %v, details: %v", err, stream.RecvMsg(nil))
+		return fmt.Errorf("can't upload: %v, details: %v", err, stream.RecvMsg(nil))
 	}
 
 	quotas := make(chan time.Time, rateLimit)
@@ -128,7 +131,7 @@ func addE(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	// Send data chunks.
+	// Send chunks.
 	for _, b := range blocks {
 		<-quotas
 		err := stream.Send(&blobpb.UploadObjectRequest{
@@ -142,20 +145,61 @@ func addE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("can't stream: %v, details: %v", err, stream.RecvMsg(nil))
 		}
 	}
-	err = stream.CloseSend()
+	_, err = stream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("can't close the stream: %v", err)
 	}
 
-	log.Printf("object was uploaded")
+	fmt.Println("object uploaded")
 	return nil
 }
 
-func encData(data string) ([][]byte, error) {
+func readFile(filepath string) ([][]byte, error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("can't open the file %v", filepath)
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("can't read the file properties - %v", err)
+	}
+	size := fi.Size()
+	if size > maxSize {
+		return nil, fmt.Errorf("unexpected file size %v, want %v", size, maxSize)
+	}
+
+	// Read and encrypt file data in blocks.
+	fr := bufio.NewReader(f)
+	blocks := make([][]byte, 1+(size-1)/bufferSize)
+	for i := uint64(0); ; i++ {
+		tmp := make([]byte, bufferSize)
+		_, err := fr.Read(tmp)
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return nil, err
+			}
+		}
+
+		b, err := encrypter.EncryptBlock(tmp, i)
+		if err != nil {
+			return nil, fmt.Errorf("can't encrypt object data: %v", err)
+		}
+
+		blocks[i] = b
+	}
+
+	return blocks, err
+}
+
+func encData(data []byte) ([][]byte, error) {
 	size := len(data)
 
 	if size < bufferSize {
-		block, err := encrypter.Encrypt([]byte(data))
+		block, err := encrypter.EncryptBlock(data, 0)
 		if err != nil {
 			return nil, fmt.Errorf("can't encrypt: %v", err)
 		}
@@ -163,10 +207,10 @@ func encData(data string) ([][]byte, error) {
 	}
 
 	blocks := make([][]byte, 1+(size-1)/bufferSize)
-	r := strings.NewReader(data)
-	for i := uint64(1); ; i++ {
+	buf := bytes.NewBuffer(data)
+	for i := uint64(0); ; i++ {
 		tmp := make([]byte, bufferSize)
-		_, err := r.Read(tmp)
+		_, err := buf.Read(tmp)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -183,45 +227,4 @@ func encData(data string) ([][]byte, error) {
 	}
 
 	return blocks, nil
-}
-
-func readFile(filepath string) ([][]byte, error) {
-	f, err := os.Open(filepath)
-	if err != nil {
-		return nil, fmt.Errorf("can't open the file %v", filepath)
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("can't read the file properties - %v", err)
-	}
-	size := fi.Size()
-	if size > maxSize {
-		return nil, fmt.Errorf("file size %v > %v", size, maxSize)
-	}
-
-	// Read and encrypt file data in blocks.
-	fr := bufio.NewReader(f)
-	blocks := make([][]byte, 1+(size-1)/bufferSize)
-	for i := uint64(1); ; i++ {
-		tmp := make([]byte, bufferSize)
-		_, err := fr.Read(tmp)
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return nil, err
-			}
-		}
-
-		b, err := encrypter.EncryptBlock(tmp, i)
-		if err != nil {
-			return nil, fmt.Errorf("can't encrypt: %v", err)
-		}
-
-		blocks = append(blocks, b)
-	}
-
-	return blocks, err
 }

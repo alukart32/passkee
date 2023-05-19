@@ -40,14 +40,20 @@ func indexE(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	resp, err := client.IndexPasswords(
-		sessHandler.AuthContext(indexCtx), &emptypb.Empty{})
+		sessHandler.AuthContext(indexCtx),
+		&emptypb.Empty{})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't index passwords: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}
 		return err
+	}
+
+	if len(resp.Names) == 0 {
+		fmt.Println("No records")
+		return nil
 	}
 
 	var sb strings.Builder
@@ -56,7 +62,7 @@ func indexE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("can't read response data: %v", err)
 		}
-		fmt.Fprintf(&sb, "%d. %v\n", i, string(name))
+		fmt.Fprintf(&sb, "  %d. %v\n", i+1, string(name))
 	}
 	fmt.Printf("Records\n%v", sb.String())
 	return nil

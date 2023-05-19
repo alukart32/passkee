@@ -38,22 +38,20 @@ func updateE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't prepare data for sending: %v", err)
 	}
 
-	var newName string
+	var newName []byte
 	if len(newRecordName) != 0 {
-		b, err := encrypter.Encrypt([]byte(newRecordName))
+		newName, err = encrypter.Encrypt([]byte(newRecordName))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newName = string(b)
 	}
 
-	var newNotes string
+	var newNotes []byte
 	if len(notes) != 0 {
-		b, err := encrypter.Encrypt([]byte(notes))
+		newNotes, err = encrypter.Encrypt([]byte(notes))
 		if err != nil {
 			return fmt.Errorf("can't prepare data for sending: %v", err)
 		}
-		newNotes = string(b)
 	}
 
 	// Prepare gRPC auth client.
@@ -70,14 +68,16 @@ func updateE(cmd *cobra.Command, args []string) error {
 	updCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	_, err = client.UpdateObjectInfo(updCtx, &blobpb.UpdateObjectInfoRequest{
-		Name: string(recordName),
-		Typ:  blobpb.ObjectType_OBJECT_BIN,
-		Info: &blobpb.UpdateObjectInfoRequest_ObjectInfo{
-			Name:  &newName,
-			Notes: &newNotes,
-		},
-	})
+	_, err = client.UpdateObjectInfo(
+		sessHandler.AuthContext(updCtx),
+		&blobpb.UpdateObjectInfoRequest{
+			Name: recordName,
+			Typ:  blobpb.ObjectType_OBJECT_BIN,
+			Info: &blobpb.UpdateObjectInfoRequest_ObjectInfo{
+				Name:  newName,
+				Notes: newNotes,
+			},
+		})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
 			err = fmt.Errorf("can't update bin record: %v", e.Message())

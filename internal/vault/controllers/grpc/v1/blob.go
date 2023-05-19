@@ -92,12 +92,12 @@ func (s *blobVaultService) UploadObject(stream blobpb.BlobVault_UploadObjectServ
 
 	userID := userIDFromCtx(stream.Context())
 	log.Printf("receive an upload-object request for user %v with name %v and type %v",
-		userID, name, objTyp)
+		userID, string(name), objTyp.T)
 
 	// Receive object data.
 	objectSize := 0
 	buf := bytes.Buffer{}
-	for blockNo := uint64(1); ; blockNo++ {
+	for i := uint64(0); ; i++ {
 		msg, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF {
@@ -112,7 +112,7 @@ func (s *blobVaultService) UploadObject(stream blobpb.BlobVault_UploadObjectServ
 			return status.Errorf(codes.InvalidArgument,
 				"object is too large: %d > %d", objectSize, maxObjectSize)
 		}
-		data, err := encrypter.DecryptBlock(msg.GetChunk().Data, blockNo)
+		data, err := encrypter.DecryptBlock(msg.GetChunk().Data, i)
 		if err != nil {
 			return status.Errorf(codes.Internal, "can't proccess stream: %v", err)
 		}
@@ -181,21 +181,20 @@ func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stre
 		return status.Errorf(codes.Unknown, "can't find object record: %v", err)
 	}
 
-	var notes string
+	var notes []byte
 	if len(blob.Notes) != 0 {
-		b, err := encrypter.Encrypt(blob.Notes)
+		notes, err = encrypter.Encrypt(blob.Notes)
 		if err != nil {
 			return status.Errorf(codes.Internal,
 				"can't prepare record notes for response: %v", err)
 		}
-		notes = string(b)
 	}
 
 	// Send object info.
 	err = stream.Send(&blobpb.DownloadObjectResponse{
 		Data: &blobpb.DownloadObjectResponse_Info{
 			Info: &blobpb.DownloadObjectResponse_ObjectInfo{
-				Notes: &notes,
+				Notes: notes,
 			},
 		},
 	})
@@ -259,17 +258,15 @@ func (s *blobVaultService) IndexObjects(ctx context.Context, in *blobpb.IndexObj
 		return nil, status.Errorf(codes.Internal, "can't prepare session: %v", err)
 	}
 
-	objects := make([]*blobpb.IndexObjectsResponse_ObjectInfo, len(records))
+	names := make([][]byte, len(records))
 	for i, v := range records {
 		name, err := encrypter.Encrypt(v.Meta.Obj.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't prepare data for sending: %v", err)
 		}
-		objects[i] = &blobpb.IndexObjectsResponse_ObjectInfo{
-			Name: string(name),
-		}
+		names[i] = name
 	}
-	return &blobpb.IndexObjectsResponse{Objects: objects}, nil
+	return &blobpb.IndexObjectsResponse{Names: names}, nil
 }
 
 func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.UpdateObjectInfoRequest) (*emptypb.Empty, error) {
@@ -296,20 +293,18 @@ func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.Upda
 	}
 
 	var newName []byte
-	if len(*in.Info.Name) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Info.Name))
+	if len(in.Info.Name) != 0 {
+		newName, err = encrypter.Decrypt(in.Info.Name)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
 		}
-		newName = b
 	}
 	var newNotes []byte
-	if len(*in.Info.Notes) != 0 {
-		b, err := encrypter.Decrypt([]byte(*in.Info.Notes))
+	if len(in.Info.Notes) != 0 {
+		newNotes, err = encrypter.Decrypt(in.Info.Notes)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
 		}
-		newNotes = b
 	}
 
 	userID := userIDFromCtx(ctx)

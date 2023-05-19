@@ -49,11 +49,11 @@ func deleteE(cmd *cobra.Command, args []string) error {
 
 	_, err = client.DeletePassword(sessHandler.AuthContext(deleteCtx),
 		&passwordpb.DeletePasswordRequest{
-			Name: string(recordName),
+			Name: recordName,
 		})
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
-			err = fmt.Errorf("can't delete password: %v", e.Message())
+			err = fmt.Errorf("%v", e.Message())
 		} else {
 			err = fmt.Errorf("can't parse %v", err)
 		}

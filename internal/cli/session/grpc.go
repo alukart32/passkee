@@ -68,7 +68,12 @@ func (h *grpcHandler) Handshake(in conn.Info) (conn.Session, error) {
 		return conn.Session{}, fmt.Errorf("can't parse session key: %v", err)
 	}
 
-	return conn.SessionFrom(resp.Id, sessionKey)
+	h.session, err = conn.SessionFrom(resp.Id, sessionKey)
+	if err != nil {
+		return conn.Session{}, fmt.Errorf("can't prepare session: %v", err)
+	}
+
+	return h.session, nil
 }
 
 // Terminate ends the established session with the server.
@@ -108,8 +113,9 @@ func (h *grpcHandler) Terminate() error {
 
 // AuthContext creates a new context for authorization.
 func (h *grpcHandler) AuthContext(ctx context.Context) context.Context {
+	creds := string(h.connInfo.Creds)
 	md := metadata.New(map[string]string{
-		"authorization": "basic " + string(h.connInfo.Creds),
+		"authorization": "basic " + creds,
 	})
 	md.Set("session_id", h.session.Id)
 
