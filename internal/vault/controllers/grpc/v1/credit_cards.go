@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// RegisterCreditCardsVaultService registers creditcardpb.UnimplementedCreditCardsVaultServer implementation.
 func RegisterCreditCardsVaultService(srv *grpc.Server, provider sessionProvider, vault creditCardsVault) error {
 	if srv == nil {
 		return fmt.Errorf("no grpc server to register")
@@ -35,6 +36,7 @@ func RegisterCreditCardsVaultService(srv *grpc.Server, provider sessionProvider,
 	return nil
 }
 
+// creditCardVaultService is an implementation of creditcardpb.UnimplementedCreditCardsVaultServer.
 type creditCardVaultService struct {
 	creditcardpb.UnimplementedCreditCardsVaultServer
 
@@ -42,6 +44,7 @@ type creditCardVaultService struct {
 	vault        creditCardsVault
 }
 
+// creditCardsVault defines credit card objects vault.
 type creditCardsVault interface {
 	Save(context.Context, models.CreditCard) error
 	Get(context.Context, models.ObjectMeta) (models.CreditCard, error)
@@ -50,6 +53,7 @@ type creditCardsVault interface {
 	Delete(context.Context, models.ObjectMeta) error
 }
 
+// AddCreditCard adds a new credit card to the vault.
 func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditcardpb.AddCreditCardRequest) (
 	*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
@@ -101,6 +105,7 @@ func (s *creditCardVaultService) AddCreditCard(ctx context.Context, in *creditca
 	return &emptypb.Empty{}, nil
 }
 
+// GetCreditCard gets a credit card from the vault.
 func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditcardpb.GetCreditCardRequest) (
 	*creditcardpb.CreditCard, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
@@ -148,6 +153,7 @@ func (s *creditCardVaultService) GetCreditCard(ctx context.Context, in *creditca
 	}, nil
 }
 
+// Index lists all credit card objects by name.
 func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, _ *emptypb.Empty) (
 	*creditcardpb.IndexCreditCardsResponse, error) {
 	records, err := s.vault.Index(ctx, userIDFromCtx(ctx))
@@ -178,6 +184,7 @@ func (s *creditCardVaultService) IndexCreditCards(ctx context.Context, _ *emptyp
 	return &creditcardpb.IndexCreditCardsResponse{Names: names}, nil
 }
 
+// UpdateCreditCard updates the credit card object details.
 func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *creditcardpb.UpdateCreditCardRequest) (
 	*emptypb.Empty, error) {
 	if in.Card.Name == nil && in.Card.Data == nil && in.Card.Notes == nil {
@@ -245,6 +252,7 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 	return &emptypb.Empty{}, nil
 }
 
+// DeleteCreditCard deletes the credit card object.
 func (s *creditCardVaultService) DeleteCreditCard(ctx context.Context, in *creditcardpb.DeleteCreditCardRequest) (
 	*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))

@@ -1,4 +1,3 @@
-// Пакет v1 defines the v1 gRPC API services.
 package v1
 
 import (
@@ -10,10 +9,12 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// sessionProvider defines the provider of current sessions.
 type sessionProvider interface {
 	SessionById(string) (conn.Session, error)
 }
 
+// connHandler defines the client session handler.
 type connHandler interface {
 	InitSession() (conn.Session, error)
 	TerminateSession(id string)

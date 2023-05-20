@@ -1,3 +1,4 @@
+// Package vaultpass provides a vault of blob objects.
 package vaultblob
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// contentEncrypter defines the vault content encryptor.
 type contentEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -22,11 +24,13 @@ type contentEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// vault represents the blob objects vault.
 type vault struct {
 	enc  contentEncrypter
 	pool *pgxpool.Pool
 }
 
+// Vault returns a new blob objects vault.
 func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("nil postgres pool")
@@ -41,6 +45,7 @@ func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	}, nil
 }
 
+// blobModel represents blob object record.
 type blobModel struct {
 	Meta  blobMeta
 	ID    string
@@ -48,12 +53,14 @@ type blobModel struct {
 	Notes []byte
 }
 
+// blobMeta represents blob object meta info.
 type blobMeta struct {
 	UserID string
 	Typ    string
 	Name   []byte
 }
 
+// Save saves a new blob object.
 func (v *vault) Save(ctx context.Context, blob models.Blob) error {
 	var (
 		err   error
@@ -110,6 +117,7 @@ func (v *vault) save(ctx context.Context, model blobModel) error {
 	return err
 }
 
+// Get gets the blob object.
 func (v *vault) Get(ctx context.Context, meta models.BlobMeta) (models.Blob, error) {
 	model, err := v.get(ctx, blobMeta{meta.Obj.UserID, meta.Typ.T, meta.Obj.Name})
 	if err != nil {
@@ -168,6 +176,7 @@ func (v *vault) get(ctx context.Context, meta blobMeta) (blobModel, error) {
 	return m, nil
 }
 
+// Index lists blob objects.
 func (v *vault) Index(ctx context.Context, userID string, typ models.BlobType) ([]models.Blob, error) {
 	names, err := v.listNames(ctx, userID, typ.T)
 	if err != nil {
@@ -222,6 +231,7 @@ func (v *vault) listNames(ctx context.Context, userID string, typ string) ([][]b
 	return names, err
 }
 
+// Update updates the blob object.
 func (v *vault) Update(ctx context.Context, meta models.BlobMeta, data models.Blob) error {
 	if len(data.Meta.Obj.Name) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
@@ -296,6 +306,7 @@ func (v *vault) update(ctx context.Context, meta blobMeta, model blobModel) erro
 	return err
 }
 
+// Delete deletes the blob object.
 func (v *vault) Delete(ctx context.Context, meta models.BlobMeta) error {
 	const query = `DELETE FROM blob_objects WHERE
 	user_id = $1 AND typ = $2 AND name = $3`

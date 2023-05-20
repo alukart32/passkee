@@ -1,3 +1,4 @@
+// Package vaultpass provides a vault of password pairs.
 package vaultpass
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// contentEncrypter defines the vault content encryptor.
 type contentEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -23,11 +25,13 @@ type contentEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// vault represents the password pairs vault.
 type vault struct {
 	enc  contentEncrypter
 	pool *pgxpool.Pool
 }
 
+// Vault returns a new password pairs vault.
 func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("nil postgres pool")
@@ -42,6 +46,7 @@ func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	}, nil
 }
 
+// Save saves a new password pair.
 func (v *vault) Save(ctx context.Context, pass models.Password) error {
 	data, err := v.enc.Encrypt(pass.Data)
 	if err != nil {
@@ -65,6 +70,7 @@ func (v *vault) Save(ctx context.Context, pass models.Password) error {
 	return err
 }
 
+// passwordModel represents password pair record.
 type passwordModel struct {
 	ID     string
 	UserID string
@@ -107,6 +113,7 @@ func (v *vault) save(ctx context.Context, model passwordModel) error {
 	return err
 }
 
+// Get gets the password pair.
 func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.Password, error) {
 	model, err := v.get(ctx, meta.UserID, meta.Name)
 	if err != nil {
@@ -160,6 +167,7 @@ func (v *vault) get(ctx context.Context, userID string, recordName []byte) (pass
 	return m, nil
 }
 
+// Index lists password pairs.
 func (v *vault) Index(ctx context.Context, userID string) ([]models.Password, error) {
 	names, err := v.listNames(ctx, userID)
 	if err != nil {
@@ -211,6 +219,7 @@ func (v *vault) listNames(ctx context.Context, userID string) ([][]byte, error) 
 	return names, err
 }
 
+// Reset resets the password pair.
 func (v *vault) Reset(ctx context.Context, meta models.ObjectMeta, data models.Password) error {
 	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
@@ -295,6 +304,7 @@ func (v *vault) reset(ctx context.Context, userID string, name []byte, model pas
 	return err
 }
 
+// Delete deletes the password pair.
 func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
 	const query = `DELETE FROM passwords WHERE user_id = $1 AND name = $2`
 	_, err := v.pool.Exec(ctx, query,

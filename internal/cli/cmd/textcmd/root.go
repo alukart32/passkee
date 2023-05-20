@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// dataEncrypter defines the session message encryptor.
 type dataEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -16,6 +17,7 @@ type dataEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// sessionHandler defines the handler of the session with the server.
 type sessionHandler interface {
 	Handshake(conn.Info) (conn.Session, error)
 	Terminate() error
@@ -26,12 +28,21 @@ type sessionHandler interface {
 var (
 	sessHandler sessionHandler
 	encrypter   dataEncrypter
+
+	// root is the parent bin command.
+	root = &cobra.Command{
+		Use: "bin [options]",
+	}
 )
 
-var root = &cobra.Command{
-	Use: "text [options]",
-}
-
+// Cmd returns a new instance of the text command.
+//
+// The text command is executed in the following order:
+//
+//  1. entering authentication data
+//  2. creating a new connection session with the server
+//  3. executing a subcommand: add, get, delete, list, update
+//  4. session termination.
 func Cmd(
 	connInfoProvider func() (conn.Info, error),
 ) *cobra.Command {

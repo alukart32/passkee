@@ -1,3 +1,4 @@
+// Package cmd defines the root cli command of the passkee application.
 package cmd
 
 import (
@@ -19,12 +20,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Root is the main command.
 var Root = &cobra.Command{
 	Use:   "passkee [object] subcommands",
 	Short: "Store confidential data",
 	Long:  `passkee CLI is a client for passkee vault server`,
 }
 
+// Execute runs the main command.
 func Execute() {
 	err := Root.Execute()
 	if err != nil {
@@ -44,9 +47,11 @@ func init() {
 }
 
 var (
-	Version   string
-	BuildTime string
+	Version   string // cli build version
+	BuildTime string // cli build time
 )
+
+// verCmd shows information about the cli application build.
 var verCmd = &cobra.Command{
 	Use:     "version",
 	Short:   "build info",
@@ -56,6 +61,7 @@ var verCmd = &cobra.Command{
 	},
 }
 
+// scanConnInfo reads the user's authentication information.
 func scanConnInfo() (conn.Info, error) {
 	var remoteAddr = "localhost:50052"
 

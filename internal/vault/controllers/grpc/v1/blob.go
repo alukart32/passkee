@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// RegisterBlobVaultService registers blobpb.UnimplementedBlobVaultServer implementation.
 func RegisterBlobVaultService(srv *grpc.Server, sess sessionProvider, vault blobVault) error {
 	if srv == nil {
 		return fmt.Errorf("no grpc server to register")
@@ -35,6 +36,7 @@ func RegisterBlobVaultService(srv *grpc.Server, sess sessionProvider, vault blob
 	return nil
 }
 
+// blobVault defines bin objects vault.
 type blobVault interface {
 	Save(context.Context, models.Blob) error
 	Get(context.Context, models.BlobMeta) (models.Blob, error)
@@ -43,6 +45,7 @@ type blobVault interface {
 	Delete(context.Context, models.BlobMeta) error
 }
 
+// blobVaultService is an implementation of blobpb.UnimplementedBlobVaultServer.
 type blobVaultService struct {
 	blobpb.UnimplementedBlobVaultServer
 
@@ -55,6 +58,10 @@ const (
 	maxChunkSize  = 4096    // bytes
 )
 
+// Uploads a new data object.
+//
+// The first message contains the metadata of the object, such as name, type, and optional notes.
+// The following messages will contain an object with a data block size of 4096 bytes.
 func (s *blobVaultService) UploadObject(stream blobpb.BlobVault_UploadObjectServer) error {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(stream.Context()))
 	if err != nil {
@@ -146,6 +153,10 @@ func (s *blobVaultService) UploadObject(stream blobpb.BlobVault_UploadObjectServ
 	return nil
 }
 
+// Downloads the object from vault.
+//
+// The first message contains the metadata of the object, such as name and optional notes.
+// The following messages will contain an object with a data block size of 4096 bytes.
 func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stream blobpb.BlobVault_DownloadObjectServer) error {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(stream.Context()))
 	if err != nil {
@@ -234,6 +245,7 @@ func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stre
 	return nil
 }
 
+// Index lists all bin objects by name.
 func (s *blobVaultService) IndexObjects(ctx context.Context, in *blobpb.IndexObjectsRequest) (
 	*blobpb.IndexObjectsResponse, error) {
 	objTyp, err := models.ObjectTypeFromString(in.Typ.String())
@@ -269,6 +281,7 @@ func (s *blobVaultService) IndexObjects(ctx context.Context, in *blobpb.IndexObj
 	return &blobpb.IndexObjectsResponse{Names: names}, nil
 }
 
+// UpdateObjectInfo updates the object details.
 func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.UpdateObjectInfoRequest) (*emptypb.Empty, error) {
 	if in.Info.Name == nil && in.Info == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "nothing to update")
@@ -328,6 +341,7 @@ func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.Upda
 	return &emptypb.Empty{}, nil
 }
 
+// DeleteObject deletes the bin object.
 func (s *blobVaultService) DeleteObject(ctx context.Context, in *blobpb.DeleteObjectRequest) (*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {

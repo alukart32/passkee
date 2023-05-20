@@ -1,3 +1,4 @@
+// Package vaultcard provides a vault of credit cards.
 package vaultcard
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// contentEncrypter defines the vault content encryptor.
 type contentEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -23,11 +25,13 @@ type contentEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// vault represents the credit cards vault.
 type vault struct {
 	enc  contentEncrypter
 	pool *pgxpool.Pool
 }
 
+// Vault returns a new credit cards vault.
 func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("nil postgres pool")
@@ -42,6 +46,7 @@ func Vault(pool *pgxpool.Pool, encrypter contentEncrypter) (*vault, error) {
 	}, nil
 }
 
+// Save saves a new credit card.
 func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
 	data, err := v.enc.Encrypt(card.Data)
 	if err != nil {
@@ -65,6 +70,7 @@ func (v *vault) Save(ctx context.Context, card models.CreditCard) error {
 	return err
 }
 
+// creditCardModel represents credit card record.
 type creditCardModel struct {
 	ID     string
 	UserID string
@@ -107,6 +113,7 @@ func (v *vault) save(ctx context.Context, model creditCardModel) error {
 	return err
 }
 
+// Get gets the credit card.
 func (v *vault) Get(ctx context.Context, meta models.ObjectMeta) (models.CreditCard, error) {
 	model, err := v.get(ctx, meta.UserID, meta.Name)
 	if err != nil {
@@ -160,6 +167,7 @@ func (v *vault) get(ctx context.Context, userID string, recordName []byte) (cred
 	return m, nil
 }
 
+// Index lists credit cards.
 func (v *vault) Index(ctx context.Context, userID string) ([]models.CreditCard, error) {
 	names, err := v.listNames(ctx, userID)
 	if err != nil {
@@ -211,6 +219,7 @@ func (v *vault) listNames(ctx context.Context, userID string) ([][]byte, error) 
 	return names, err
 }
 
+// Update updates the credit card.
 func (v *vault) Update(ctx context.Context, meta models.ObjectMeta, data models.CreditCard) error {
 	if len(data.Meta.Name) == 0 && len(data.Data) == 0 && len(data.Notes) == 0 {
 		return fmt.Errorf("nothing to update")
@@ -295,6 +304,7 @@ func (v *vault) update(ctx context.Context, userID string, name []byte, model cr
 	return err
 }
 
+// Delete deletes the credit card.
 func (v *vault) Delete(ctx context.Context, meta models.ObjectMeta) error {
 	const query = `DELETE FROM credit_cards WHERE user_id = $1 AND name = $2`
 	_, err := v.pool.Exec(ctx, query, meta.UserID, meta.Name)

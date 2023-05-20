@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// RegisterSessionService registers authpb.UnimplementedSessionServer implementation.
 func RegisterSessionService(srv *grpc.Server, conn connHandler) error {
 	if srv == nil {
 		return fmt.Errorf("no grpc server to register")
@@ -28,12 +29,14 @@ func RegisterSessionService(srv *grpc.Server, conn connHandler) error {
 	return nil
 }
 
+// sessionService is an implementation of authpb.UnimplementedSessionServer.
 type sessionService struct {
 	authpb.UnimplementedSessionServer
 
 	conn connHandler
 }
 
+// Handshake creates a new session with the client. A unique symmetric message encryption key is created.
 func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*authpb.ServerSession, error) {
 	sess, err := s.conn.InitSession()
 	if err != nil {
@@ -46,6 +49,7 @@ func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*auth
 	}, nil
 }
 
+// Terminate ends the client session.
 func (s *sessionService) Terminate(ctx context.Context, in *authpb.TerminateRequest) (*emptypb.Empty, error) {
 	s.conn.TerminateSession(in.Id)
 	return &emptypb.Empty{}, nil

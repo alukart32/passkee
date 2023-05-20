@@ -25,7 +25,7 @@ service BlobVault {
   // Index lists all objects.
   rpc IndexObjects(IndexObjectsRequest) returns (IndexObjectsResponse);
 
-  // Deletes an object.
+  // Deletes the object.
   rpc DeleteObject(DeleteObjectRequest) returns (google.protobuf.Empty);
 }
 

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// RegisterAuthService registers authpb.UnimplementedAuthServer implementation.
 func RegisterAuthService(srv *grpc.Server, sess sessionProvider, saver userSaver) error {
 	if srv == nil {
 		return fmt.Errorf("no grpc server to register")
@@ -33,16 +34,20 @@ func RegisterAuthService(srv *grpc.Server, sess sessionProvider, saver userSaver
 	return nil
 }
 
+// authService is an implementation of authpb.UnimplementedAuthServer.
 type authService struct {
 	authpb.UnimplementedAuthServer
 
 	sessProvider sessionProvider
 	userSaver    userSaver
 }
+
+// userSaver defines user saver.
 type userSaver interface {
 	Save(context.Context, models.User) error
 }
 
+// LogOn registers a new user in the system.
 func (s *authService) LogOn(ctx context.Context, in *authpb.LogOnRequest) (*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {

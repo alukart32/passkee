@@ -1,3 +1,4 @@
+// Package vault defines the passkee vault server.
 package vault
 
 import (
@@ -23,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Run prepares and starts the passkee server.
 func Run() {
 	logger := zerologx.Get()
 

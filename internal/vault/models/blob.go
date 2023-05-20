@@ -4,25 +4,30 @@ import (
 	"fmt"
 )
 
+// Blob represents the binary object record.
 type Blob struct {
 	Meta  BlobMeta
 	Notes []byte
 	Data  []byte
 }
 
+// IsEmpty checks on being empty.
 func (b *Blob) IsEmpty() bool {
 	return b.Meta.IsEmpty() && len(b.Data) == 0
 }
 
+// BlobMeta represents the extra information of the Blob object.
 type BlobMeta struct {
 	Obj ObjectMeta
 	Typ BlobType
 }
 
+// IsEmpty checks on being empty.
 func (m *BlobMeta) IsEmpty() bool {
 	return m.Obj.IsEmpty() && len(m.Typ.T) == 0
 }
 
+// BlobType defines Blob object type.
 type BlobType struct {
 	T string
 }

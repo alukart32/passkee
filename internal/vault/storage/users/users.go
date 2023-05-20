@@ -1,3 +1,4 @@
+// Package users provides a users storage.
 package users
 
 import (
@@ -13,10 +14,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Storage represents user storage.
 type Storage struct {
 	pool *pgxpool.Pool
 }
 
+// NewStorage creates a new user Storage.
 func NewStorage(pool *pgxpool.Pool) (*Storage, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("nil postgres pool")
@@ -27,6 +30,7 @@ func NewStorage(pool *pgxpool.Pool) (*Storage, error) {
 	}, nil
 }
 
+// Save saves a new user.
 func (s *Storage) Save(ctx context.Context, user models.User) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:       pgx.RepeatableRead,
@@ -58,6 +62,7 @@ func (s *Storage) Save(ctx context.Context, user models.User) error {
 	return err
 }
 
+// Get gets the user.
 func (s *Storage) Get(ctx context.Context, username string) (models.User, error) {
 	const query = `SELECT * FROM users WHERE username = $1`
 	var (

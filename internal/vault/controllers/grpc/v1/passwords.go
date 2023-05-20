@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// RegisterPasswordsVaultService registers passwordpb.UnimplementedPasswordsVaultServer implementation.
 func RegisterPasswordsVaultService(srv *grpc.Server, sess sessionProvider, vault passwordsVault) error {
 	if srv == nil {
 		return fmt.Errorf("no grpc server to register")
@@ -35,12 +36,15 @@ func RegisterPasswordsVaultService(srv *grpc.Server, sess sessionProvider, vault
 	return nil
 }
 
+// passwordVaultService is an implementation of passwordpb.UnimplementedPasswordsVaultServer.
 type passwordVaultService struct {
 	passwordpb.UnimplementedPasswordsVaultServer
 
 	sessProvider sessionProvider
 	vault        passwordsVault
 }
+
+// passwordsVault defines password pair objects vault.
 type passwordsVault interface {
 	Save(context.Context, models.Password) error
 	Get(context.Context, models.ObjectMeta) (models.Password, error)
@@ -49,6 +53,7 @@ type passwordsVault interface {
 	Delete(ctx context.Context, meta models.ObjectMeta) error
 }
 
+// AddPassword adds a new password pair to the vault.
 func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.AddPasswordRequest) (*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
@@ -98,6 +103,7 @@ func (s *passwordVaultService) AddPassword(ctx context.Context, in *passwordpb.A
 	return &emptypb.Empty{}, nil
 }
 
+// GetPassword gets a password pair from the vault.
 func (s *passwordVaultService) GetPassword(ctx context.Context, in *passwordpb.GetPasswordRequest) (*passwordpb.Password, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
@@ -144,6 +150,7 @@ func (s *passwordVaultService) GetPassword(ctx context.Context, in *passwordpb.G
 	}, nil
 }
 
+// Index lists all passwords objects by name.
 func (s *passwordVaultService) IndexPasswords(ctx context.Context, _ *emptypb.Empty) (
 	*passwordpb.IndexPasswordsResponse, error) {
 	records, err := s.vault.Index(ctx, userIDFromCtx(ctx))
@@ -174,6 +181,7 @@ func (s *passwordVaultService) IndexPasswords(ctx context.Context, _ *emptypb.Em
 	return &passwordpb.IndexPasswordsResponse{Names: names}, nil
 }
 
+// ResetPassword resets the password pair.
 func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb.ResetPasswordRequest) (*emptypb.Empty, error) {
 	if in.Password.Name == nil && in.Password.Data == nil && in.Password.Notes == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "nothing to update")
@@ -241,6 +249,7 @@ func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb
 	return &emptypb.Empty{}, nil
 }
 
+// DeletePassword deletes the password object.
 func (s *passwordVaultService) DeletePassword(ctx context.Context, in *passwordpb.DeletePasswordRequest) (*emptypb.Empty, error) {
 	session, err := s.sessProvider.SessionById(sessionFromCtx(ctx))
 	if err != nil {
