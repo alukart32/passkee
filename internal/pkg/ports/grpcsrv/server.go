@@ -25,15 +25,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// server defines the gRPC server wrapper.
-type server struct {
+// Server defines the gRPC Server wrapper.
+type Server struct {
 	Srv    *grpc.Server
 	notify chan error
 	addr   string
 }
 
-// Server creates a new grpc server.
-func Server(cfg Config, authOpts grpcauth.AuthOpts) (*server, error) {
+// NewServer creates a new grpc server.
+func NewServer(cfg Config, authOpts grpcauth.AuthOpts) (*Server, error) {
 	if len(cfg.ADDR) == 0 {
 		opts := env.Options{RequiredIfNoDef: true}
 		if err := env.Parse(&cfg, opts); err != nil {
@@ -95,9 +95,23 @@ func Server(cfg Config, authOpts grpcauth.AuthOpts) (*server, error) {
 				recovery.WithRecoveryHandler(recoveryHandler),
 			),
 		),
+		grpc.ChainStreamInterceptor(
+			otelgrpc.StreamServerInterceptor(),
+			logging.StreamServerInterceptor(
+				logger(rpcLogger),
+				logOpts...,
+			),
+			selector.StreamServerInterceptor(
+				auth.StreamServerInterceptor(authOpts.Fn),
+				authOpts.Skip,
+			),
+			recovery.StreamServerInterceptor(
+				recovery.WithRecoveryHandler(recoveryHandler),
+			),
+		),
 	}
 	// Set up server.
-	s := server{
+	s := Server{
 		Srv:    grpc.NewServer(opts...),
 		notify: make(chan error, 1),
 		addr:   cfg.ADDR,
@@ -107,7 +121,7 @@ func Server(cfg Config, authOpts grpcauth.AuthOpts) (*server, error) {
 }
 
 // Run runs grpc Server.
-func (s *server) Run() {
+func (s *Server) Run() {
 	go func() {
 		listener, err := net.Listen("tcp", s.addr)
 		if err != nil {
@@ -120,12 +134,12 @@ func (s *server) Run() {
 }
 
 // Notify throws a server error.
-func (s *server) Notify() <-chan error {
+func (s *Server) Notify() <-chan error {
 	return s.notify
 }
 
 // Shutdown gracefully stops the server.
-func (s *server) Shutdown() {
+func (s *Server) Shutdown() {
 	s.Srv.GracefulStop()
 	s.Srv.Stop()
 }

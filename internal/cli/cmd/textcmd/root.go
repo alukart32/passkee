@@ -2,13 +2,14 @@ package textcmd
 
 import (
 	"context"
-	"fmt"
+	"log"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/session"
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
 	"github.com/spf13/cobra"
 )
 
+// dataEncrypter defines the session message encryptor.
 type dataEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -16,6 +17,7 @@ type dataEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// sessionHandler defines the handler of the session with the server.
 type sessionHandler interface {
 	Handshake(conn.Info) (conn.Session, error)
 	Terminate() error
@@ -26,38 +28,47 @@ type sessionHandler interface {
 var (
 	sessHandler sessionHandler
 	encrypter   dataEncrypter
-)
-var root = &cobra.Command{
-	Use: "bin [options]",
-}
 
+	// root is the parent bin command.
+	root = &cobra.Command{
+		Use: "bin [options]",
+	}
+)
+
+// Cmd returns a new instance of the text command.
+//
+// The text command is executed in the following order:
+//
+//  1. entering authentication data
+//  2. creating a new connection session with the server
+//  3. executing a subcommand: add, get, delete, list, update
+//  4. session termination.
 func Cmd(
 	connInfoProvider func() (conn.Info, error),
 ) *cobra.Command {
-	root.PreRunE = func(cmd *cobra.Command, args []string) error {
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		// Read user input.
 		connInfo, err := connInfoProvider()
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 
-		// Create a new auth provider.
+		// Create a new session handler.
 		sessHandler = session.GrpcHandler()
-
 		// Try to handshake.
 		clientSession, err := sessHandler.Handshake(connInfo)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 		encrypter, err = clientSession.DataEncrypter()
 		if err != nil {
-			return fmt.Errorf("can't prepare data encrypter: %v", err)
+			log.Fatal(err)
 		}
-
-		return nil
 	}
-	root.PostRunE = func(cmd *cobra.Command, args []string) error {
-		return sessHandler.Terminate()
+	root.PersistentPostRun = func(cmd *cobra.Command, args []string) {
+		if err := sessHandler.Terminate(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	root.AddCommand(

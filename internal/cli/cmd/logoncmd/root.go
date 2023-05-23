@@ -1,3 +1,4 @@
+// Package logoncmd provides the login command functionality.
 package logoncmd
 
 import (
@@ -12,9 +13,12 @@ import (
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
+// dataEncrypter defines the session message encryptor.
 type dataEncrypter interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	EncryptBlock(plaintext []byte, blockNo uint64) ([]byte, error)
@@ -22,6 +26,7 @@ type dataEncrypter interface {
 	DecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, error)
 }
 
+// sessionHandler defines the handler of the session with the server.
 type sessionHandler interface {
 	Handshake(conn.Info) (conn.Session, error)
 	Terminate() error
@@ -34,26 +39,32 @@ var (
 	encrypter   dataEncrypter
 )
 
-var root = &cobra.Command{
-	Use:     "logon",
-	Example: "logon -a server_address -u myname -p pass",
-	Short:   "Log on to the server",
-}
-
 var (
 	remoteAddr string
 	username   string
 	password   string
 )
 
+// Cmd returns a new instance of the logon command.
+//
+// The bin command is executed in the following order:
+//
+//  1. entering authentication data
+//  2. creating a new connection session with the server
+//  3. executing a command
+//  4. session termination.
 func Cmd() *cobra.Command {
-	root.PreRunE = func(cmd *cobra.Command, args []string) error {
+	cmd := cobra.Command{
+		Use:     "logon",
+		Example: "logon -a server_address -u username -p password",
+		Short:   "Log on to the server",
+	}
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		// Create a new session handler.
 		sessHandler = session.GrpcHandler()
 
 		clientSession, err := sessHandler.Handshake(conn.Info{
 			RemoteAddr: remoteAddr,
-			Creds:      "",
 		})
 		if err != nil {
 			return err
@@ -65,31 +76,31 @@ func Cmd() *cobra.Command {
 
 		return nil
 	}
-	root.PostRunE = func(cmd *cobra.Command, args []string) error {
+	cmd.PostRunE = func(cmd *cobra.Command, args []string) error {
 		return sessHandler.Terminate()
 	}
-	root.RunE = logon
+	cmd.RunE = logonE
 
-	root.Flags().StringVarP(&remoteAddr, "addr", "a", "http://localhost:8080", "vault remote address")
-	root.MarkFlagRequired("addr")
-	root.Flags().StringVarP(&username, "username", "u", "", "username")
-	root.Flags().StringVarP(&password, "password", "p", "", "password")
-	root.MarkFlagsRequiredTogether("username", "password")
+	cmd.Flags().StringVarP(&remoteAddr, "addr", "a", "", "vault remote address")
+	cmd.MarkFlagRequired("addr")
+	cmd.Flags().StringVarP(&username, "username", "u", "", "username")
+	cmd.Flags().StringVarP(&password, "password", "p", "", "password")
+	cmd.MarkFlagsRequiredTogether("username", "password")
 
-	return root
+	return &cmd
 }
 
-func logon(cmd *cobra.Command, args []string) error {
+func logonE(cmd *cobra.Command, args []string) error {
 	hash := sha256.New()
 	hash.Write([]byte(password))
 	passwordHash := hash.Sum(nil)
 
-	encUsername, err := encrypter.Encrypt([]byte(username))
+	_username, err := encrypter.Encrypt([]byte(username))
 	if err != nil {
 		return fmt.Errorf("can't encrypt username: %v", err)
 	}
 
-	encPassword, err := encrypter.Encrypt(passwordHash)
+	_password, err := encrypter.Encrypt(passwordHash)
 	if err != nil {
 		return fmt.Errorf("can't encrypt password: %v", err)
 	}
@@ -108,15 +119,26 @@ func logon(cmd *cobra.Command, args []string) error {
 
 	logonCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	_, err = client.LogOn(logonCtx, &authpb.LogOnRequest{
-		Username: encUsername,
-		Password: encPassword,
-	})
+	_, err = client.LogOn(sessHandler.AuthContext(logonCtx),
+		&authpb.LogOnRequest{
+			Username: _username,
+			Password: _password,
+		})
 
-	// TODO: check errors
 	if err != nil {
-		return fmt.Errorf("failed to logon: %v", err)
+		if e, ok := status.FromError(err); ok {
+			switch e.Code() {
+			case codes.DeadlineExceeded:
+				fmt.Println(e.Message())
+			case codes.Internal:
+				fmt.Printf("%v", e.Message())
+			default:
+				fmt.Println(e.Code(), e.Message())
+			}
+		} else {
+			fmt.Printf("can't parse %v", err)
+		}
 	}
-
+	fmt.Println("successful logon")
 	return nil
 }

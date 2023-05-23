@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -52,10 +53,13 @@ func (h *grpcHandler) Handshake(in conn.Info) (conn.Session, error) {
 		handshakeCtx,
 		&emptypb.Empty{},
 	)
-
-	// TODO: check errors
 	if err != nil {
-		return conn.Session{}, fmt.Errorf("handshake failed: %v", err)
+		if e, ok := status.FromError(err); ok {
+			err = fmt.Errorf("handshake failed: %v", e.Message())
+		} else {
+			err = fmt.Errorf("can't parse %v", err)
+		}
+		return conn.Session{}, err
 	}
 
 	// Prepare session context.
@@ -64,7 +68,12 @@ func (h *grpcHandler) Handshake(in conn.Info) (conn.Session, error) {
 		return conn.Session{}, fmt.Errorf("can't parse session key: %v", err)
 	}
 
-	return conn.SessionFrom(resp.Id, sessionKey)
+	h.session, err = conn.SessionFrom(resp.Id, sessionKey)
+	if err != nil {
+		return conn.Session{}, fmt.Errorf("can't prepare session: %v", err)
+	}
+
+	return h.session, nil
 }
 
 // Terminate ends the established session with the server.
@@ -91,18 +100,22 @@ func (h *grpcHandler) Terminate() error {
 			Id: h.session.Id,
 		},
 	)
-
-	// TODO: check errors
 	if err != nil {
-		return fmt.Errorf("can't terminate session: %v", err)
+		if e, ok := status.FromError(err); ok {
+			err = fmt.Errorf("can't terminate session: %v", e.Message())
+		} else {
+			err = fmt.Errorf("can't parse %v", err)
+		}
+		return err
 	}
 	return nil
 }
 
 // AuthContext creates a new context for authorization.
 func (h *grpcHandler) AuthContext(ctx context.Context) context.Context {
+	creds := string(h.connInfo.Creds)
 	md := metadata.New(map[string]string{
-		"authorization": "basic " + string(h.connInfo.Creds),
+		"authorization": "basic " + creds,
 	})
 	md.Set("session_id", h.session.Id)
 

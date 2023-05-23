@@ -1,18 +1,20 @@
-// Пакет v1 defines the v1 gRPC API services.
 package v1
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
 	"github.com/alukart32/yandex/practicum/passkee/pkg/proto/v1/authpb"
 	"google.golang.org/grpc/metadata"
 )
 
+// sessionProvider defines the provider of current sessions.
 type sessionProvider interface {
 	SessionById(string) (conn.Session, error)
 }
 
+// connHandler defines the client session handler.
 type connHandler interface {
 	InitSession() (conn.Session, error)
 	TerminateSession(id string)
@@ -21,7 +23,7 @@ type connHandler interface {
 // MethodsForAuthSkip returns a list of gRPC methods for auth skip.
 func MethodsForAuthSkip() []string {
 	skipMethods := []string{
-		authpb.Auth_ServiceDesc.ServiceName,
+		authpb.Auth_LogOn_FullMethodName,
 		authpb.Session_Handshake_FullMethodName,
 		authpb.Session_Terminate_FullMethodName,
 	}
@@ -38,4 +40,22 @@ func userIDFromCtx(ctx context.Context) string {
 		}
 	}
 	return userID
+}
+
+// sessionFromCtx gets sessionID from the context of the method request.
+func sessionFromCtx(ctx context.Context) string {
+	var sessionID string
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		values := md.Get("session_id")
+		if len(values) > 0 {
+			sessionID = values[0]
+		}
+	}
+
+	id, err := base64.StdEncoding.DecodeString(sessionID)
+	if err != nil {
+		return ""
+	}
+
+	return string(id)
 }

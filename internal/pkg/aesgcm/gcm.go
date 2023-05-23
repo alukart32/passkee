@@ -73,7 +73,7 @@ func (e *encrypter) DecryptBlocks(ciphertext []byte) ([]byte, error) {
 
 	cBuf := bytes.NewBuffer(ciphertext)
 
-	blockNo := uint64(1)
+	blockNo := uint64(0)
 	plaintext := make([][]byte, 1+(len(ciphertext)-1)/blockSize)
 	for cBuf.Len() > 0 {
 		ciphertext := cBuf.Next(int(blockSize))
@@ -112,8 +112,9 @@ func (e *encrypter) doDecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, e
 	ciphertext = ciphertext[nonceSize:]
 
 	// Decrypt
+	ad := blockAD(blockNo)
 	plaintext := make([]byte, blockSize)
-	plaintext, err := e.aead.Open(plaintext[:0], nonce, ciphertext, nil)
+	plaintext, err := e.aead.Open(plaintext[:0], nonce, ciphertext, ad)
 	if err != nil {
 		log.Panic(err)
 	}

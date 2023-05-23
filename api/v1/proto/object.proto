@@ -1,13 +1,12 @@
 syntax = "proto3";
 
 import "google/protobuf/empty.proto";
-import "google/protobuf/field_mask.proto";
 
-option go_package = "pkg/proto/v1/objectpb";
+option go_package = "pkg/proto/v1/blobpb";
 
-package dataobject.v1;
+package blob.v1;
 
-service ObjectVault {
+service BlobVault {
   // Uploads a new data object.
   //
   // The first message contains the metadata of the object, such as name, type, and optional notes.
@@ -24,9 +23,9 @@ service ObjectVault {
   rpc UpdateObjectInfo(UpdateObjectInfoRequest) returns (google.protobuf.Empty);
 
   // Index lists all objects.
-  rpc IndexObjects(google.protobuf.Empty) returns (IndexObjectsResponse);
+  rpc IndexObjects(IndexObjectsRequest) returns (IndexObjectsResponse);
 
-  // Deletes an object.
+  // Deletes the object.
   rpc DeleteObject(DeleteObjectRequest) returns (google.protobuf.Empty);
 }
 
@@ -60,9 +59,7 @@ message DownloadObjectRequest {
 
 message DownloadObjectResponse {
   message ObjectInfo {
-    bytes name = 1;
-    bytes id = 2;
-    optional bytes notes = 3;
+    optional bytes notes = 1;
   }
 
   oneof data {
@@ -76,21 +73,19 @@ message UpdateObjectInfoRequest {
   ObjectType typ = 2;
 
   message ObjectInfo {
-    bytes name = 1;
-    bytes id = 2;
-    optional bytes notes = 3;
+    optional bytes name = 1;
+    optional bytes notes = 2;
   }
   ObjectInfo info = 3;
+}
 
-  google.protobuf.FieldMask update_mask = 4;
+
+message IndexObjectsRequest {
+    ObjectType typ = 1;
 }
 
 message IndexObjectsResponse {
-  message ObjectInfo {
-    bytes name = 1;
-    ObjectType typ = 2;
-  }
-  repeated ObjectInfo infos = 1;
+  repeated bytes names = 1;
 }
 
 message DeleteObjectRequest {

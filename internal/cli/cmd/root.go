@@ -1,3 +1,4 @@
+// Package cmd defines the root cli command of the passkee application.
 package cmd
 
 import (
@@ -12,20 +13,21 @@ import (
 
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/bincmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/cardcmd"
-	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/credcmd"
-	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/infocmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/logoncmd"
+	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/passcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd/textcmd"
 	"github.com/alukart32/yandex/practicum/passkee/internal/pkg/conn"
 	"github.com/spf13/cobra"
 )
 
+// Root is the main command.
 var Root = &cobra.Command{
 	Use:   "passkee [object] subcommands",
 	Short: "Store confidential data",
 	Long:  `passkee CLI is a client for passkee vault server`,
 }
 
+// Execute runs the main command.
 func Execute() {
 	err := Root.Execute()
 	if err != nil {
@@ -35,21 +37,33 @@ func Execute() {
 
 func init() {
 	Root.AddCommand(
-		infocmd.Cmd,
+		verCmd,
 		logoncmd.Cmd(),
 		bincmd.Cmd(scanConnInfo),
 		textcmd.Cmd(scanConnInfo),
-		credcmd.Cmd(scanConnInfo),
+		passcmd.Cmd(scanConnInfo),
 		cardcmd.Cmd(scanConnInfo),
 	)
 }
 
+var (
+	Version   string // cli build version
+	BuildTime string // cli build time
+)
+
+// verCmd shows information about the cli application build.
+var verCmd = &cobra.Command{
+	Use:     "version",
+	Short:   "build info",
+	Aliases: []string{"v", "ver"},
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("ver: %v, buildTime: %v", Version, BuildTime)
+	},
+}
+
+// scanConnInfo reads the user's authentication information.
 func scanConnInfo() (conn.Info, error) {
-	var (
-		remoteAddr string
-		username   string
-		password   []byte
-	)
+	var remoteAddr = "localhost:50052"
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Vault server [%v]: ", remoteAddr)
@@ -59,7 +73,7 @@ func scanConnInfo() (conn.Info, error) {
 		log.Fatalf("Error: %v\n", err)
 	}
 	addrStr = strings.TrimSpace(addrStr)
-	if len(remoteAddr) != 0 {
+	if len(addrStr) != 0 {
 		_, err = url.Parse(addrStr)
 		if err != nil {
 			log.Fatalln("Corrupted URL")
@@ -72,25 +86,27 @@ func scanConnInfo() (conn.Info, error) {
 	if err != nil {
 		log.Fatalf("Error: %v\n", err)
 	}
-	username = strings.TrimSpace(usernameStr)
+	username := strings.TrimSpace(usernameStr)
 	if len(username) == 0 {
 		log.Fatalln("Empty username")
 	}
 
-	fmt.Printf("Authentication required for %v\nPassword: ", remoteAddr)
+	fmt.Printf("\nAuthentication required for %v\nPassword: ", remoteAddr)
 	rawPassword, err := reader.ReadString('\n')
 	if err != nil {
 		log.Fatalf("Error: %v\n", err)
 	}
+	fmt.Println()
+
 	rawPassword = strings.TrimSpace(rawPassword)
 	if len(rawPassword) == 0 {
 		log.Fatalln("Empty password")
 	}
+
 	hash := sha256.New()
 	hash.Write([]byte(rawPassword))
-	password = hash.Sum(nil)
 
-	creds := fmt.Sprintf("%s:%v", username, password)
+	creds := fmt.Sprintf("%v:%v", username, string(hash.Sum(nil)[:]))
 	creds = base64.StdEncoding.EncodeToString([]byte(creds))
 
 	return conn.Info{
