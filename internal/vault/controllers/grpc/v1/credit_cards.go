@@ -202,33 +202,33 @@ func (s *creditCardVaultService) UpdateCreditCard(ctx context.Context, in *credi
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 
 	var newName []byte
 	if len(in.Card.Name) != 0 {
 		newName, err = encrypter.Decrypt(in.Card.Name)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v", err)
 		}
 	}
 	var newData []byte
 	if len(in.Card.Data) != 0 {
 		newData, err = encrypter.Decrypt([]byte(in.Card.Data))
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process new data from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process new data from request: %v", err)
 		}
 
 		dataRegx := regexp.MustCompile(`([0-9]+):((0?[1-9]|1[012])\/[0-9]{4}):([0-9]{3})(:([A-Z]+)_([A-Z]+))?`)
 		if !dataRegx.MatchString(string(newData)) {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid password pair format", err)
+			return nil, status.Error(codes.InvalidArgument, "invalid password pair format")
 		}
 	}
 	var newNotes []byte
 	if len(in.Card.Notes) != 0 {
 		newNotes, err = encrypter.Decrypt(in.Card.Notes)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v", err)
 		}
 	}
 
@@ -266,7 +266,7 @@ func (s *creditCardVaultService) DeleteCreditCard(ctx context.Context, in *credi
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 
 	userID := userIDFromCtx(ctx)

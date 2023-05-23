@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"runtime"
 
 	"golang.org/x/sync/errgroup"
@@ -104,7 +103,7 @@ func (e *encrypter) doDecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, e
 		return ciphertext, fmt.Errorf("empty ciphertext")
 	}
 	if len(ciphertext) < nonceSize {
-		log.Panic("block is too short")
+		return nil, fmt.Errorf("block is too short")
 	}
 
 	// Extract nonce
@@ -116,7 +115,7 @@ func (e *encrypter) doDecryptBlock(ciphertext []byte, blockNo uint64) ([]byte, e
 	plaintext := make([]byte, blockSize)
 	plaintext, err := e.aead.Open(plaintext[:0], nonce, ciphertext, ad)
 	if err != nil {
-		log.Panic(err)
+		return nil, err
 	}
 
 	return plaintext, nil
@@ -141,7 +140,7 @@ func (e *encrypter) doEncryptBlock(plaintext []byte, blockNo uint64) ([]byte, er
 	}
 	nonce, err := randomNonce(nonceSize)
 	if err != nil {
-		log.Panic(err)
+		return nil, err
 	}
 
 	// Block is authenticated with block number.
@@ -152,7 +151,7 @@ func (e *encrypter) doEncryptBlock(plaintext []byte, blockNo uint64) ([]byte, er
 	// Encrypt plaintext and append to nonce.
 	ciphertext := e.aead.Seal(block, nonce, plaintext, ad)
 	if len(plaintext)+overhead != len(ciphertext) {
-		log.Panicf("unexpected ciphertext length: plaintext=%d, overhead=%d, ciphertext=%d",
+		return nil, fmt.Errorf("unexpected ciphertext length: plaintext=%d, overhead=%d, ciphertext=%d",
 			len(plaintext), overhead, len(ciphertext))
 	}
 	return ciphertext, nil

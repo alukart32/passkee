@@ -198,21 +198,21 @@ func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 
 	var newName []byte
 	if len(in.Password.Name) != 0 {
 		newName, err = encrypter.Decrypt(in.Password.Name)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v", err)
 		}
 	}
 	var newData []byte
 	if len(in.Password.Data) != 0 {
 		newData, err = encrypter.Decrypt(in.Password.Data)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process a new data from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process a new data from request: %v", err)
 		}
 
 		dataRegx := regexp.MustCompile(`^([0-9A-Za-z@#$%*_^\\]{1,15}):([0-9A-Za-z@#$%*_^\\]{1,15})$`)
@@ -225,7 +225,7 @@ func (s *passwordVaultService) ResetPassword(ctx context.Context, in *passwordpb
 	if len(in.Password.Notes) != 0 {
 		newNotes, err = encrypter.Decrypt(in.Password.Notes)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v", err)
 		}
 	}
 
@@ -262,7 +262,7 @@ func (s *passwordVaultService) DeletePassword(ctx context.Context, in *passwordp
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 
 	userID := userIDFromCtx(ctx)

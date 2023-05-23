@@ -51,6 +51,11 @@ func (s *sessionService) Handshake(ctx context.Context, _ *emptypb.Empty) (*auth
 
 // Terminate ends the client session.
 func (s *sessionService) Terminate(ctx context.Context, in *authpb.TerminateRequest) (*emptypb.Empty, error) {
-	s.conn.TerminateSession(in.Id)
+	id, err := base64.StdEncoding.DecodeString(in.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "can't terminate session: %v", err)
+	}
+
+	s.conn.TerminateSession(string(id))
 	return &emptypb.Empty{}, nil
 }
