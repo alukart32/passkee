@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+
+option go_package = "pkg/proto/v1/objectpb";
+
+package dataobject.v1;
+
+service ObjectVault {
+  // Uploads a new data object.
+  //
+  // The first message contains the metadata of the object, such as name, type, and optional notes.
+  // The following messages will contain an object with a data block size of 4096 bytes.
+  rpc UploadObject(stream UploadObjectRequest) returns (google.protobuf.Empty);
+
+  // Downloads the object from vault.
+  //
+  // The first message contains the metadata of the object, such as name and optional notes.
+  // The following messages will contain an object with a data block size of 4096 bytes.
+  rpc DownloadObject(DownloadObjectRequest) returns (stream DownloadObjectResponse);
+
+  // UpdateObjectInfo updates the object details.
+  rpc UpdateObjectInfo(UpdateObjectInfoRequest) returns (google.protobuf.Empty);
+
+  // Index lists all objects.
+  rpc IndexObjects(google.protobuf.Empty) returns (IndexObjectsResponse);
+
+  // Deletes an object.
+  rpc DeleteObject(DeleteObjectRequest) returns (google.protobuf.Empty);
+}
+
+message UploadObjectRequest {
+  message ObjectInfo {
+    bytes name = 1;
+    ObjectType typ = 2;
+    optional bytes notes = 3;
+  }
+
+  oneof data {
+    ObjectInfo info = 1;
+    Chunk chunk = 2;
+  }
+}
+
+enum ObjectType {
+  UNDEFINED = 0;
+  OBJECT_TEXT = 1;
+  OBJECT_BIN = 2;
+}
+
+message Chunk {
+  bytes data = 1; // 4096 bytes
+}
+
+message DownloadObjectRequest {
+  bytes name = 1;
+  ObjectType typ = 2;
+}
+
+message DownloadObjectResponse {
+  message ObjectInfo {
+    bytes name = 1;
+    bytes id = 2;
+    optional bytes notes = 3;
+  }
+
+  oneof data {
+    ObjectInfo info = 1;
+    Chunk chunk = 2;
+  }
+}
+
+message UpdateObjectInfoRequest {
+  bytes name = 1;
+  ObjectType typ = 2;
+
+  message ObjectInfo {
+    bytes name = 1;
+    bytes id = 2;
+    optional bytes notes = 3;
+  }
+  ObjectInfo info = 3;
+
+  google.protobuf.FieldMask update_mask = 4;
+}
+
+message IndexObjectsResponse {
+  message ObjectInfo {
+    bytes name = 1;
+    ObjectType typ = 2;
+  }
+  repeated ObjectInfo infos = 1;
+}
+
+message DeleteObjectRequest {
+  bytes name = 1;
+  ObjectType typ = 2;
+}
