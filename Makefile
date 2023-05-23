@@ -84,3 +84,11 @@ build-cli:
 	go build -C ./cmd/cli/ -ldflags \
 	"-X github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd.Version=v1.0.0 \
 	-X 'github.com/alukart32/yandex/practicum/passkee/internal/cli/cmd.BuildTime=$(date +'%Y/%m/%d %H:%M:%S')'"
+
+.PHONY: test
+test:
+	go test ./internal/... -coverprofile cover.out
+
+.PHONY: test-cover
+test-cover: test
+	go tool cover -func cover.out

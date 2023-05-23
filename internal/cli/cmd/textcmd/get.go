@@ -73,7 +73,7 @@ func getE(cmd *cobra.Command, args []string) error {
 
 	// Recieve object data.
 	buf := new(bytes.Buffer)
-	for i := uint64(1); ; i++ {
+	for i := uint64(0); ; i++ {
 		msg, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF {

@@ -149,7 +149,7 @@ func (s *blobVaultService) UploadObject(stream blobpb.BlobVault_UploadObjectServ
 	}
 
 	log.Printf("object for user %v with name %v and type %v was saved",
-		userID, name, objTyp)
+		userID, string(name), objTyp.T)
 	return nil
 }
 
@@ -179,7 +179,7 @@ func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stre
 
 	userID := userIDFromCtx(stream.Context())
 	log.Printf("receive an download-object request for user %v with name %v and type %v",
-		userID, recordName, objTyp)
+		userID, string(recordName), objTyp.T)
 
 	blob, err := s.vault.Get(stream.Context(), models.BlobMeta{
 		Obj: models.ObjectMeta{
@@ -215,7 +215,7 @@ func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stre
 
 	chunk := make([]byte, maxChunkSize)
 	buf := bytes.NewBuffer(blob.Data)
-	for i := uint64(1); buf.Len() > 0; i++ {
+	for i := uint64(0); buf.Len() > 0; i++ {
 		_, err := buf.Read(chunk)
 		if err != nil {
 			return status.Errorf(codes.Internal,
@@ -241,7 +241,7 @@ func (s *blobVaultService) DownloadObject(in *blobpb.DownloadObjectRequest, stre
 		}
 	}
 	log.Printf("object for user %v with name %v and type %v was downloaded",
-		userID, recordName, objTyp)
+		userID, string(recordName), objTyp.T)
 	return nil
 }
 
@@ -298,7 +298,7 @@ func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.Upda
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 	objTyp, err := models.ObjectTypeFromString(in.Typ.String())
 	if err != nil {
@@ -309,14 +309,14 @@ func (s *blobVaultService) UpdateObjectInfo(ctx context.Context, in *blobpb.Upda
 	if len(in.Info.Name) != 0 {
 		newName, err = encrypter.Decrypt(in.Info.Name)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process a new name from request: %v", err)
 		}
 	}
 	var newNotes []byte
 	if len(in.Info.Notes) != 0 {
 		newNotes, err = encrypter.Decrypt(in.Info.Notes)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v")
+			return nil, status.Errorf(codes.Internal, "can't process new notes from request: %v", err)
 		}
 	}
 
@@ -354,7 +354,7 @@ func (s *blobVaultService) DeleteObject(ctx context.Context, in *blobpb.DeleteOb
 
 	recordName, err := encrypter.Decrypt([]byte(in.Name))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v")
+		return nil, status.Errorf(codes.Internal, "can't process record name from request: %v", err)
 	}
 	objTyp, err := models.ObjectTypeFromString(in.Typ.String())
 	if err != nil {
